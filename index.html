@@ -357,8 +357,7 @@ tr:hover .del-row{opacity:1}
 // ── SUPABASE ──
 let SB=null;
 function initSB(){
-  const u=localStorage.getItem('hkm_url')||'';
-  const k=localStorage.getItem('hkm_key')||'';
+  const u=localStorage.getItem('hkm_url'),k=localStorage.getItem('hkm_key');
   if(u&&k&&window.supabase)SB=window.supabase.createClient(u,k);
 }
 initSB();
@@ -385,7 +384,7 @@ const CW=WK.length-1;
 // ── LOCAL DB ──
 let DB={
   casinos:[{id:'rwlv',name:'Resorts World Las Vegas',short:'RWLV',city:'Las Vegas, NV',cats:CL}],
-  items:{},lps:{},bidH:{},newB:{},impBH:{},delItems:{},alertsSent:{},bidStatus:{},_notifs:[],_users:[],_ddStatus:{},
+  items:{},lps:{},bidH:{},newB:{},impBH:{},delItems:{},alertsSent:{},bidStatus:{},_notifs:[],_users:[],_sbUrl:'',_sbKey:'',_ddStatus:{},
   periods:[
     {id:'p0',lbl:'Weekly 03/22',dt:'03/22/26',data:{}},
     {id:'p1',lbl:'Weekly 03/15',dt:'03/15/26',data:{}},
@@ -395,7 +394,6 @@ let DB={
 // ── DATA PERSISTENCE (localStorage + Supabase sync) ──
 function dbLoad(){
   try{const s=localStorage.getItem('hkm_db');if(s)Object.assign(DB,JSON.parse(s));}catch(e){}
-  // After loading DB, try to connect Supabase with stored creds
   if(!SB&&DB._sbUrl&&DB._sbKey){
     localStorage.setItem('hkm_url',DB._sbUrl);
     localStorage.setItem('hkm_key',DB._sbKey);
@@ -425,8 +423,6 @@ async function sbLoad(){
       Object.assign(DB, data.data);
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
-      const _ap=document.getElementById('admin-panel-body');
-      if(_ap&&_ap.closest('#admin-panel-float')?.style.display==='block') renderAdminPanel();
     }
   }catch(e){console.warn('Supabase load failed:',e.message);}
 }
@@ -541,10 +537,7 @@ const tdl=()=>{const d=new Date();return(d.getMonth()+1).toString().padStart(2,'
 function render(){
   rBC();rTR();rSB();
   const el=document.getElementById('main');
-  if(!localStorage.getItem('hkm_skip')&&!SB){
-    initSB();
-    if(!SB){el.innerHTML=rSetup();return;}
-  }
+  if(!localStorage.getItem('hkm_skip')&&!SB){el.innerHTML=rSetup();return;}
   if(!DB._isAdmin&&S.view==='upload'){S.view='dashboard';}
   if(!DB._isAdmin&&S.bTab==='draftbid'){S.bTab='bidhistory';}
   const fn={dashboard:rDash,casino:rCasino,bids:rBids,upload:rUpload,bidoverview:rBidOverview};
@@ -710,7 +703,7 @@ function doSetup(){
   localStorage.setItem('hkm_skip','1');
   DB._sbUrl=u;DB._sbKey=k;
   initSB();
-  if(SB){dbSave();sal('sa','✓ Connected! Your team can now access the app.','ok',0);}
+  if(SB)dbSave();
   render();
 }
 function skipSetup(){localStorage.setItem('hkm_skip','1');render();}
@@ -817,7 +810,7 @@ function rDraftBid(){
   const po_b=DB.periods.map((p,i)=>_fmtP(p,i,S.cB)).join('');
   return`
 ${rFltBar('db')}
-${(!DB.periods||DB.periods.length===0||!DB.periods.some(p=>Object.keys(p.data||{}).length>0))?`<div class="al a-wn show" style="margin-bottom:12px">No price list data loaded. Go to <b>Upload Hub → Import Master Files</b> and upload <b>MASTER__BIDDING_-_PRICE_COMP_-_PRICE_LIST.xlsx</b> to enable cost/price comparison.</div>`:''}
+${(!DB.periods||!DB.periods.some(p=>Object.keys(p.data||{}).length>0))?`<div class="al a-wn show" style="margin-bottom:12px">No price list data. Go to <b>Upload Hub → Import Master Files</b> → upload <b>MASTER__BIDDING_-_PRICE_COMP_-_PRICE_LIST.xlsx</b></div>`:''}
 <div class="psb">
   <div class="psg psa">
     <label class="fl"><span class="bdg bc2">PERIOD A — CURRENT</span></label>
@@ -2219,7 +2212,7 @@ function importPriceListMaster(file){
       });
 
       DB.periods=newPeriods;
-      S.cA=0; S.cB=Math.min(1,newPeriods.length-1); // reset to first two periods
+      S.cA=0; S.cB=Math.min(1,newPeriods.length-1);
       dbSave();hProg('pl2');
       const n=Object.keys(newPeriods[0]?.data||{}).length;
       sal('pl2-al',`✓ Price List imported: ${usePeriods.length} periods, ${n} items in current period. Draft Bid comparison updated.`,'ok');
@@ -3307,17 +3300,17 @@ document.addEventListener('click',function(e){
 // ── User helpers — DB-synced so cross-device ──
 function getUsers(){
   if(DB._users&&DB._users.length>0) return DB._users;
-  try{ return JSON.parse(localStorage.getItem('hkm_users')||'[]'); }catch(e){return [];}
+  try{ return getUsers(); }catch(e){return [];}
 }
 function saveUsers(users){
   DB._users=users;
   dbSave();
-  try{ localStorage.setItem('hkm_users',JSON.stringify(users)); }catch(e){}
+  try{ saveUsers(users); }catch(e){}
 }
 function migrateLocalUsers(){
   if(DB._users&&DB._users.length>0) return;
   try{
-    const local=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+    const local=getUsers();
     if(local.length>0){DB._users=local;dbSave();}
   }catch(e){}
 }
