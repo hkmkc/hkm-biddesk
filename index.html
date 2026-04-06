@@ -384,7 +384,7 @@ const CW=WK.length-1;
 // ── LOCAL DB ──
 let DB={
   casinos:[{id:'rwlv',name:'Resorts World Las Vegas',short:'RWLV',city:'Las Vegas, NV',cats:CL}],
-  items:{},lps:{},bidH:{},newB:{},impBH:{},delItems:{},alertsSent:{},bidStatus:{},_notifs:[],_ddStatus:{},
+  items:{},lps:{},bidH:{},newB:{},impBH:{},delItems:{},alertsSent:{},bidStatus:{},_notifs:[],_users:[],_ddStatus:{},
   periods:[
     {id:'p0',lbl:'Weekly 03/22',dt:'03/22/26',data:{}},
     {id:'p1',lbl:'Weekly 03/15',dt:'03/15/26',data:{}},
@@ -2331,7 +2331,7 @@ function getPendingAlertCount(){
     if(auth){
       const a=JSON.parse(auth);
       if(a.email&&a.email.toLowerCase()==='krissa@hongkongmarketvegas.com'){
-        const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+        const users=getUsers();
         cnt+=users.filter(u=>!u.approved&&u.role!=='admin').length;
       }
     }
@@ -3008,7 +3008,8 @@ function checkAuth(){
     // Session valid (no expiry for now — persistent login)
     DB._currentUser={email:a.email,name:a.name||a.email};
     // isAdmin: either the hardcoded admin email OR role='admin' in users list
-    const _users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+    migrateLocalUsers();
+    const _users=getUsers();
     const _me=_users.find(u=>u.email.toLowerCase()===a.email.toLowerCase());
     DB._isAdmin=a.email.toLowerCase()===ADMIN_EMAIL.toLowerCase()||(_me&&_me.role==='admin');
     return true;
@@ -3031,7 +3032,7 @@ function doLogin(){
   const pw=document.getElementById('login-pw').value||'';
   if(!email||!pw){document.getElementById('login-al').textContent='Enter email and password.';return;}
   // Check stored users
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const user=users.find(u=>u.email.toLowerCase()===email);
   // Admin override: always allow with correct hashed pw
   if(email===ADMIN_EMAIL.toLowerCase()){
@@ -3039,7 +3040,7 @@ function doLogin(){
       // First login — create admin account
       const entry={email,pw:btoa(pw),name:'Krissa',role:'admin',approved:true};
       users.push(entry);
-      localStorage.setItem('hkm_users',JSON.stringify(users));
+      saveUsers(users);
       localStorage.setItem('hkm_auth',JSON.stringify({email,pw:btoa(pw),name:'Krissa'}));
       hideLogin();return;
     }
@@ -3058,7 +3059,7 @@ function doSignup(){
   const email=(document.getElementById('signup-email2').value||'').trim().toLowerCase();
   const pw=document.getElementById('signup-pw2').value||'';
   if(!name||!email||!pw){alert('Fill in all fields.');return;}
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   if(users.find(u=>u.email.toLowerCase()===email)){alert('An account with this email already exists.');return;}
   users.push({email,pw:btoa(pw),name,role:'user',approved:false,requested:new Date().toISOString()});
   localStorage.setItem('hkm_users',JSON.stringify(users));
@@ -3123,10 +3124,10 @@ function saveSettingsPanel(){
   if(pw){
     user.pw=btoa(pw);
     // Update stored user list too
-    const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+    const users=getUsers();
     const idx=users.findIndex(u=>u.email===user.email);
     if(idx>=0){users[idx].pw=btoa(pw);if(name)users[idx].name=name;}
-    localStorage.setItem('hkm_users',JSON.stringify(users));
+    saveUsers(users);
   }
   localStorage.setItem('hkm_auth',JSON.stringify(user));
   if(msg){msg.style.color='var(--green)';msg.textContent='Saved!';}
@@ -3174,7 +3175,7 @@ function closeAdminPanel(){
 function renderAdminPanel(){
   const body=document.getElementById('admin-panel-body');
   if(!body) return;
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const pending=users.filter(u=>!u.approved&&u.role!=='admin');
   const approved=users.filter(u=>u.approved&&u.role!=='admin');
 
@@ -3228,36 +3229,36 @@ function renderAdminPanel(){
   body.innerHTML=html;
 }
 function adminApprove(email){
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const u=users.find(u=>u.email.toLowerCase()===email.toLowerCase());
   if(!u) return;
   u.approved=true;
   u.approvedAt=new Date().toISOString();
-  localStorage.setItem('hkm_users',JSON.stringify(users));
+  saveUsers(users);
   renderAdminPanel();
   // Add notification
   addNotif(`✅ Access granted to ${u.name||u.email}`,'green');
 }
 function adminReject(email){
   if(!confirm(`Reject access for ${email}?`)) return;
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const updated=users.filter(u=>u.email.toLowerCase()!==email.toLowerCase());
-  localStorage.setItem('hkm_users',JSON.stringify(updated));
+  saveUsers(updated);
   renderAdminPanel();
 }
 
 function adminSetRole(email, role){
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const u=users.find(u=>u.email.toLowerCase()===email.toLowerCase());
-  if(u){ u.role=role; localStorage.setItem('hkm_users',JSON.stringify(users)); }
+  if(u){ u.role=role; saveUsers(users); }
   renderAdminPanel();
 }
 function adminRevoke(email){
   if(!confirm(`Revoke access for ${email}? They will need to request again.`)) return;
-  const users=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+  const users=getUsers();
   const u=users.find(u=>u.email.toLowerCase()===email.toLowerCase());
   if(u){u.approved=false; delete u.approvedAt;}
-  localStorage.setItem('hkm_users',JSON.stringify(users));
+  saveUsers(users);
   renderAdminPanel();
 }
 // Show/hide admin item in menu based on role
@@ -3279,6 +3280,28 @@ document.addEventListener('click',function(e){
     ap.style.display='none';
   }
 });
+
+// ── User helpers — DB-synced so cross-device ──
+function getUsers(){
+  // Primary: DB._users (syncs to Supabase)
+  if(DB._users&&DB._users.length>0) return DB._users;
+  // Fallback: old localStorage store
+  try{ return JSON.parse(localStorage.getItem('hkm_users')||'[]'); }catch(e){return [];}
+}
+function saveUsers(users){
+  DB._users=users;
+  dbSave(); // syncs to Supabase automatically
+  // Keep localStorage in sync too as fallback
+  try{ localStorage.setItem('hkm_users',JSON.stringify(users)); }catch(e){}
+}
+function migrateLocalUsers(){
+  // On first load: pull any localStorage users into DB._users
+  if(DB._users&&DB._users.length>0) return; // already have DB users
+  try{
+    const local=JSON.parse(localStorage.getItem('hkm_users')||'[]');
+    if(local.length>0){DB._users=local;dbSave();}
+  }catch(e){}
+}
 
 // ── INIT ──
 // Auth runs after DOM is ready
