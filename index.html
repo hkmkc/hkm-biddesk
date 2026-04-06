@@ -357,7 +357,8 @@ tr:hover .del-row{opacity:1}
 // ── SUPABASE ──
 let SB=null;
 function initSB(){
-  const u=localStorage.getItem('hkm_url'),k=localStorage.getItem('hkm_key');
+  const u=localStorage.getItem('hkm_url')||'';
+  const k=localStorage.getItem('hkm_key')||'';
   if(u&&k&&window.supabase)SB=window.supabase.createClient(u,k);
 }
 initSB();
@@ -394,6 +395,13 @@ let DB={
 // ── DATA PERSISTENCE (localStorage + Supabase sync) ──
 function dbLoad(){
   try{const s=localStorage.getItem('hkm_db');if(s)Object.assign(DB,JSON.parse(s));}catch(e){}
+  // After loading DB, try to connect Supabase with stored creds
+  if(!SB&&DB._sbUrl&&DB._sbKey){
+    localStorage.setItem('hkm_url',DB._sbUrl);
+    localStorage.setItem('hkm_key',DB._sbKey);
+    localStorage.setItem('hkm_skip','1');
+    initSB();
+  }
 }
 function dbSave(){
   try{localStorage.setItem('hkm_db',JSON.stringify(DB));}catch(e){}
@@ -417,6 +425,8 @@ async function sbLoad(){
       Object.assign(DB, data.data);
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
+      const _ap=document.getElementById('admin-panel-body');
+      if(_ap&&_ap.closest('#admin-panel-float')?.style.display==='block') renderAdminPanel();
     }
   }catch(e){console.warn('Supabase load failed:',e.message);}
 }
@@ -424,6 +434,7 @@ async function sbLoad(){
 dbLoad();
 // Load from Supabase after local load (async, won't block UI)
 setTimeout(()=>sbLoad(), 500);
+setInterval(()=>{if(SB)sbLoad();}, 60000);
 
 // Seed RWLV Asian from casino sheet (exact order)
 (function seed(){
@@ -530,7 +541,10 @@ const tdl=()=>{const d=new Date();return(d.getMonth()+1).toString().padStart(2,'
 function render(){
   rBC();rTR();rSB();
   const el=document.getElementById('main');
-  if(!localStorage.getItem('hkm_skip')&&!SB){el.innerHTML=rSetup();return;}
+  if(!localStorage.getItem('hkm_skip')&&!SB){
+    initSB();
+    if(!SB){el.innerHTML=rSetup();return;}
+  }
   if(!DB._isAdmin&&S.view==='upload'){S.view='dashboard';}
   if(!DB._isAdmin&&S.bTab==='draftbid'){S.bTab='bidhistory';}
   const fn={dashboard:rDash,casino:rCasino,bids:rBids,upload:rUpload,bidoverview:rBidOverview};
@@ -693,7 +707,11 @@ function doSetup(){
   const u=document.getElementById('su').value.trim(),k=document.getElementById('sk').value.trim();
   if(!u||!k){sal('sa','Enter both URL and key.','er',0);return;}
   localStorage.setItem('hkm_url',u);localStorage.setItem('hkm_key',k);
-  localStorage.setItem('hkm_skip','1');initSB();render();
+  localStorage.setItem('hkm_skip','1');
+  DB._sbUrl=u;DB._sbKey=k;
+  initSB();
+  if(SB){dbSave();sal('sa','✓ Connected! Your team can now access the app.','ok',0);}
+  render();
 }
 function skipSetup(){localStorage.setItem('hkm_skip','1');render();}
 
@@ -794,17 +812,21 @@ function rBidSheet(){
 function rDraftBid(){
   const pa=DB.periods[S.cA]||DB.periods[0],pb=DB.periods[S.cB]||DB.periods[1];
   const its=gI(S.casino.id,S.cat);
-  const po=DB.periods.map((p,i)=>`<option value="${i}">${p.lbl} (${p.dt})</option>`).join('');
+  const _fmtP=(p,i,sel)=>{const n=Object.keys(p.data||{}).length;const lbl=(p.bid_type?p.bid_type+' – ':'')+p.lbl+(n>0?' ('+n+' items)':' (no data)');return`<option value="${i}"${i===sel?' selected':''}>${lbl}</option>`;};
+  const po_a=DB.periods.map((p,i)=>_fmtP(p,i,S.cA)).join('');
+  const po_b=DB.periods.map((p,i)=>_fmtP(p,i,S.cB)).join('');
   return`
-${rFltBar('db')}<div class="psb">
+${rFltBar('db')}
+${(!DB.periods||DB.periods.length===0||!DB.periods.some(p=>Object.keys(p.data||{}).length>0))?`<div class="al a-wn show" style="margin-bottom:12px">No price list data loaded. Go to <b>Upload Hub → Import Master Files</b> and upload <b>MASTER__BIDDING_-_PRICE_COMP_-_PRICE_LIST.xlsx</b> to enable cost/price comparison.</div>`:''}
+<div class="psb">
   <div class="psg psa">
     <label class="fl"><span class="bdg bc2">PERIOD A — CURRENT</span></label>
-    <select class="pss" onchange="S.cA=parseInt(this.value);render()">${po}</select>
+    <select class="pss" onchange="S.cA=parseInt(this.value);render()">${po_a}</select>
   </div>
   <div class="vs">vs</div>
   <div class="psg psb2">
     <label class="fl"><span class="bdg bp">PERIOD B — COMPARE TO</span></label>
-    <select class="pss" onchange="S.cB=parseInt(this.value);render()">${po}</select>
+    <select class="pss" onchange="S.cB=parseInt(this.value);render()">${po_b}</select>
   </div>
   <div style="margin-left:auto;font-size:11px;color:var(--tx2);align-self:center;line-height:1.7">
     Margin = (Price − Cost) ÷ Price<br>
@@ -2197,6 +2219,7 @@ function importPriceListMaster(file){
       });
 
       DB.periods=newPeriods;
+      S.cA=0; S.cB=Math.min(1,newPeriods.length-1); // reset to first two periods
       dbSave();hProg('pl2');
       const n=Object.keys(newPeriods[0]?.data||{}).length;
       sal('pl2-al',`✓ Price List imported: ${usePeriods.length} periods, ${n} items in current period. Draft Bid comparison updated.`,'ok');
@@ -3062,7 +3085,7 @@ function doSignup(){
   const users=getUsers();
   if(users.find(u=>u.email.toLowerCase()===email)){alert('An account with this email already exists.');return;}
   users.push({email,pw:btoa(pw),name,role:'user',approved:false,requested:new Date().toISOString()});
-  localStorage.setItem('hkm_users',JSON.stringify(users));
+  saveUsers(users);
   alert('Access requested! You will be notified within 24–72 hours.');
   document.getElementById('signup-area').style.display='none';
 }
@@ -3283,20 +3306,16 @@ document.addEventListener('click',function(e){
 
 // ── User helpers — DB-synced so cross-device ──
 function getUsers(){
-  // Primary: DB._users (syncs to Supabase)
   if(DB._users&&DB._users.length>0) return DB._users;
-  // Fallback: old localStorage store
   try{ return JSON.parse(localStorage.getItem('hkm_users')||'[]'); }catch(e){return [];}
 }
 function saveUsers(users){
   DB._users=users;
-  dbSave(); // syncs to Supabase automatically
-  // Keep localStorage in sync too as fallback
+  dbSave();
   try{ localStorage.setItem('hkm_users',JSON.stringify(users)); }catch(e){}
 }
 function migrateLocalUsers(){
-  // On first load: pull any localStorage users into DB._users
-  if(DB._users&&DB._users.length>0) return; // already have DB users
+  if(DB._users&&DB._users.length>0) return;
   try{
     const local=JSON.parse(localStorage.getItem('hkm_users')||'[]');
     if(local.length>0){DB._users=local;dbSave();}
