@@ -404,7 +404,9 @@ function dbSave(){
 // Push full DB to a single Supabase row (key='hkm_main')
 async function sbSync(){
   try{
-    await SB.from('app_data').upsert({key:'hkm_main', data: DB, updated_at: new Date().toISOString()}, {onConflict:'key'});
+    const toSave=Object.assign({},DB);
+    delete toSave._isAdmin;delete toSave._currentUser;
+    await SB.from('app_data').upsert({key:'hkm_main', data: toSave, updated_at: new Date().toISOString()}, {onConflict:'key'});
   }catch(e){console.warn('Supabase sync failed:',e.message);}
 }
 
@@ -414,7 +416,9 @@ async function sbLoad(){
   try{
     const {data,error} = await SB.from('app_data').select('data').eq('key','hkm_main').single();
     if(data&&data.data){
+      const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser;
       Object.assign(DB, data.data);
+      DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
     }
@@ -594,10 +598,10 @@ function rSB(){
           <span class="sb-cat-c">${gI(c.id,cat).length}</span>
         </div>`;
       });
-      h+=`<div class="sb-add" onclick="nav('upload',{uTab:'addbid'})">+ Add Bid Category</div>`;
+      if(DB._isAdmin)h+=`<div class="sb-add" onclick="nav('upload',{uTab:'addbid'})">+ Add Bid Category</div>`;
     }
   });
-  h+=`<div class="sb-add" style="padding-left:14px;margin-top:4px" onclick="nav('upload',{uTab:'addbid'})">+ Add Casino</div>`;
+  if(DB._isAdmin)h+=`<div class="sb-add" style="padding-left:14px;margin-top:4px" onclick="nav('upload',{uTab:'addbid'})">+ Add Casino</div>`;
   el.innerHTML=h;
 }
 function sbToggle(cid){
