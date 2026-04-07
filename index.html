@@ -357,6 +357,7 @@ tr:hover .del-row{opacity:1}
 const SB_URL='https://eggiosntpbtqsexixprq.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnZ2lvc250cGJ0cXNleGl4cHJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0OTYwNzUsImV4cCI6MjA5MTA3MjA3NX0.fe7_mriHsKNZVTfZfuLcYLY2hFwff0lkfblwXaIcPxY';
 let SB=null;
+let _sbReady=false; // true only after we have confirmed real data from Supabase
 function initSB(){
   if(window.supabase)SB=window.supabase.createClient(SB_URL,SB_KEY);
 }
@@ -403,6 +404,7 @@ function dbSave(){
 
 // Push full DB to a single Supabase row (key='hkm_main')
 async function sbSync(){
+  if(!_sbReady){console.warn('Supabase push blocked — data not yet confirmed from server.');return;}
   try{
     const toSave=Object.assign({},DB);
     delete toSave._isAdmin;delete toSave._currentUser;
@@ -419,6 +421,7 @@ async function sbLoad(){
       const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser;
       Object.assign(DB, data.data);
       DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;
+      _sbReady=true; // confirmed real data — safe to push from now on
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
     }
