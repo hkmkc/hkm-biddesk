@@ -2487,12 +2487,22 @@ function applyFlt(items, scope){
   }
   return out;
 }
+function onFltQ(el,key){
+  if(!S.flt)S.flt={};
+  const v=el.value;
+  const start=el.selectionStart, end=el.selectionEnd;
+  S.flt[key]=v; S.pg={};
+  render();
+  // Refocus the search input and restore cursor position after render recreates the DOM
+  const inp=document.querySelector('.fsearch[data-fk="'+key+'"]');
+  if(inp){inp.focus();try{inp.setSelectionRange(start,end);}catch(e){}}
+}
 function rFltBar(scope){
   const flt=S.flt||{};
   return`<div class="fbar">
     <span class="ftag${flt.hkmOnly?' on':''}" onclick="S.flt.hkmOnly=!S.flt.hkmOnly;S.pg={};render()">&#9670; HKM Only</span>
     <span class="ftag${flt.pricedOnly?' on':''}" onclick="S.flt.pricedOnly=!S.flt.pricedOnly;S.pg={};render()">&#9670; Priced Only</span>
-    <input class="fsearch" placeholder="Search HKM / Item# / Desc…" value="${flt.q||''}" oninput="S.flt.q=this.value;S.pg={};render()">
+    <input class="fsearch" data-fk="q" placeholder="Search HKM / Item# / Desc…" value="${flt.q||''}" oninput="onFltQ(this,'q')">
     ${(flt.hkmOnly||flt.pricedOnly||flt.q)?'<span class="ftag" onclick="S.flt={};S.pg={};render()" style="color:var(--red);border-color:#f7c1c1">✕ Clear</span>':''}
   </div>`;
 }
@@ -2926,7 +2936,7 @@ function rBidOverview(){
   <div style="display:flex;flex-direction:column;gap:4px">
     <span class="fl">Item # or HKM Code</span>
     <input class="fsearch" placeholder="e.g. F13000010 or GEQUZ" value="${ovQ}"
-      oninput="if(!S.flt)S.flt={};S.flt.ovQ=this.value;S.pg={};render()" style="width:240px">
+      oninput="onFltQ(this,'ovQ')" data-fk="ovQ" style="width:240px">
   </div>
   ${ovQ?`<button class="btn" onclick="S.flt.ovQ='';S.pg={};render()">\u2715 Clear</button>`:''}
 </div>
