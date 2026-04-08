@@ -690,9 +690,7 @@ function rBC(){
 function rTR(){
   const el=document.getElementById('tr');
   let h='';
-  if(DB._isAdmin&&S.view==='bids'&&S.bTab==='draftbid'){
-    h+=`<button class="btn btn-gd btn-sm" onclick="saveBid()">Save Bid</button>`;
-  }
+  // Save Bid moved inline into Draft Bid tab
   // Bell button
   const cnt=getPendingAlertCount();
   h+=`<div id="bell-wrap">
@@ -944,6 +942,13 @@ ${(!DB.periods||!DB.periods.some(p=>Object.keys(p.data||{}).length>0))?`<div cla
   <button class="btn btn-nv btn-sm" onclick="runAutoPrice()">Automate Bid</button>
   <button class="btn btn-sm" onclick="openPasteModal()">Paste Bid Prices</button>
   <button class="btn btn-gd btn-sm" onclick="copyDraftBid()">Copy Bid Prices</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <span style="font-size:11px;font-weight:800;color:var(--navy);white-space:nowrap;letter-spacing:.3px">EFFECTIVE THROUGH:</span>
+    <input type="date" id="eff-from" value="${S._effFrom||''}" onchange="S._effFrom=this.value" style="padding:4px 8px;border-radius:6px;border:1.5px solid var(--navy);font-size:11px;font-family:inherit;color:var(--navy);background:var(--bg)">
+    <span style="color:var(--tx2);font-weight:700">–</span>
+    <input type="date" id="eff-to" value="${S._effTo||''}" onchange="S._effTo=this.value" style="padding:4px 8px;border-radius:6px;border:1.5px solid var(--navy);font-size:11px;font-family:inherit;color:var(--navy);background:var(--bg)">
+    <button class="btn btn-gd btn-sm" style="font-weight:800;letter-spacing:.5px;padding:6px 16px" onclick="saveBid()">SAVE BID</button>
+  </div>
 </div>
 <div id="draft-al" class="al" style="margin-bottom:10px"></div>
 <div class="tw twh"><table><thead><tr>
@@ -1034,8 +1039,12 @@ function onBI(el){
 // ── BID PRICE HISTORY ──
 function rBidHist(){
   const impKey=S.casino.id+'|'+S.cat;
+  const savedBids=DB.savedBids&&DB.savedBids[impKey]||[];
   if(DB.impBH&&DB.impBH[impKey]&&DB.impBH[impKey].cols&&DB.impBH[impKey].cols.length>0){
-    return rBidHistImported(DB.impBH[impKey]);
+    return rBidHistImported(DB.impBH[impKey],savedBids);
+  }
+  if(savedBids.length>0){
+    return rBidHistSaved(savedBids);
   }
   const its=applyFlt(gI(S.casino.id,S.cat),'bh');
   const vw=WK.filter(w=>S.selW.has(w.id));
@@ -1606,20 +1615,32 @@ function copyBid(){
 }
 
 function saveBid(){
+  const fromEl=document.getElementById('eff-from');
+  const toEl=document.getElementById('eff-to');
+  if(!fromEl||!toEl||!fromEl.value||!toEl.value){
+    sal('bal','Set both Effective Through dates before saving.','er',0); return;
+  }
+  const from=new Date(fromEl.value+'T12:00:00');
+  const to=new Date(toEl.value+'T12:00:00');
+  const fmt=d=>`${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')}`;
+  const lbl=`${fmt(from)} - ${fmt(to)}`;
+  S._effFrom=fromEl.value; S._effTo=toEl.value;
+  const key=`${S.casino.id}|${S.cat}`;
+  if(!DB.savedBids) DB.savedBids={};
+  if(!DB.savedBids[key]) DB.savedBids[key]=[];
   const its=gI(S.casino.id,S.cat);
-  let n=0;
+  const bids={};let n=0;
   its.forEach(it=>{
     const nk=`${S.casino.id}|${S.cat}|${it.item}`,nb=DB.newB[nk];
-    if(nb&&nb!==''){
-      const h=gH(S.casino.id,S.cat,it.item);
-      while(h.length<WK.length)h.push(null);
-      h[CW]=parseFloat(nb);
-      sH(S.casino.id,S.cat,it.item,h);
-      delete DB.newB[nk];n++;
-    }
+    if(nb&&nb!==''){bids[it.item]=parseFloat(nb);n++;}
   });
+  if(n===0){sal('bal','No new bid prices to save. Enter prices in the New Bid ★ column first.','er',0);return;}
+  DB.savedBids[key]=DB.savedBids[key].filter(p=>p.lbl!==lbl);
+  DB.savedBids[key].unshift({id:'sb'+Date.now(),lbl,dt:fromEl.value,bids});
+  if(DB.savedBids[key].length>30) DB.savedBids[key]=DB.savedBids[key].slice(0,30);
+  its.forEach(it=>{const nk=`${S.casino.id}|${S.cat}|${it.item}`;delete DB.newB[nk];});
   dbSave();
-  sal('bal',`✓ ${n} bid prices saved to history for ${WK[CW].l}`,'ok');
+  sal('bal',`✓ ${n} bid prices saved — effective ${lbl}`,'ok');
   render();
 }
 
@@ -2015,11 +2036,14 @@ function runAutoPrice() {
 
 // getLastBid: returns most recent bid price — app-entered first, then imported
 function getLastBid(cid,cat,item){
-  // 1. App-entered bids (DB.bidH)
+  // 1. App-saved bids via saveBid() — newest first
+  const k=cid+'|'+cat;
+  const saved=DB.savedBids&&DB.savedBids[k]||[];
+  for(const p of saved){if(p.bids&&p.bids[item]!=null)return p.bids[item];}
+  // 2. App-entered bids (WK-based DB.bidH)
   const h=gH(cid,cat,item);
   for(let i=h.length-1;i>=0;i--){if(h[i]!=null)return h[i];}
-  // 2. Imported history (last non-null in cols array)
-  const k=cid+'|'+cat;
+  // 3. Imported history
   if(DB.impBH&&DB.impBH[k]&&DB.impBH[k].rows&&DB.impBH[k].rows[item]){
     const row=DB.impBH[k].rows[item];
     for(let i=row.length-1;i>=0;i--){if(row[i]!=null&&row[i]>0)return row[i];}
@@ -2028,23 +2052,60 @@ function getLastBid(cid,cat,item){
 }
 
 // rBidHistImported: shows full historical bid table from imported master files
-function rBidHistImported(impData){
+function rBidHistSaved(savedBids){
+  const its=applyFlt(gI(S.casino.id,S.cat),'bh');
+  const active=its.filter(it=>savedBids.some(p=>p.bids&&p.bids[it.item]!=null));
+  if(!active.length) return rFltBar('bh')+'<div style="padding:20px;color:var(--tx3);font-size:13px">No saved bids yet. Use Draft Bid → enter prices → SAVE BID.</div>';
+  const note=`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">${savedBids.length} saved periods &nbsp;·&nbsp; ${active.length} items &nbsp;·&nbsp; <strong>*</strong> = most recent</div>`;
+  let h='<div class="tw twh"><table><thead><tr>';
+  h+='<th class="sth" style="width:28px;min-width:28px;text-align:right">No.</th>';
+  h+='<th class="s1 sth" style="min-width:70px">HKM</th><th class="s2 sth" style="min-width:70px">Item #</th>';
+  h+='<th class="s3 sth" style="min-width:210px">Description</th><th style="width:50px">UM</th>';
+  savedBids.slice(0,26).forEach((p,i)=>{h+=`<th style="min-width:74px;${i===0?'background:#1d6a4a;':''}">${p.lbl}${i===0?' *':''}</th>`;});
+  h+='</tr></thead><tbody>';
+  const pgKey='bh_'+S.casino.id+'_'+S.cat;
+  const pgd=doPg(active,pgKey);
+  pgd.items.forEach((it,_ri)=>{
+    const _rn=((S.pg[pgKey]||0)*(S.pgSz||10))+_ri+1;
+    h+=`<tr><td class="rn">${_rn}</td>`;
+    h+=`<td class="s1" style="font-size:11px;color:#0c447c;font-weight:700">${it.hkm||'<span class="nc">—</span>'}</td>`;
+    h+=`<td class="s2" style="font-size:11px">${it.item}</td>`;
+    h+=`<td class="desc-cell s3" title="${it.desc||''}" style="font-size:11px">${it.desc}</td>`;
+    h+=`<td style="font-size:11px;color:var(--tx2)">${it.unit}</td>`;
+    savedBids.slice(0,26).forEach((p,i)=>{
+      const pv=p.bids&&p.bids[it.item]!=null?p.bids[it.item]:null;
+      const pp=i<savedBids.length-1&&savedBids[i+1].bids?savedBids[i+1].bids[it.item]||null:null;
+      let cls='pr';if(pv!=null&&pp!=null){if(pv>pp)cls+=' pu';else if(pv<pp)cls+=' pd';}
+      h+=`<td class="${cls}" style="${i===0?'background:rgba(29,106,74,.08);':''}">${pv!=null?'$'+f(pv):'<span class="nc">—</span>'}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  return rFltBar('bh')+note+h+rPgBar(pgd,pgKey);
+}
+
+function rBidHistImported(impData,savedBids=[]){
   const its=gI(S.casino.id,S.cat);
   const allCols=impData.cols;
-  // Show last 26 periods, newest first
-  const showCols=allCols.slice().reverse().slice(0,26);
+  // Saved bids columns come first (newest), then imported cols
+  const maxImp=26-Math.min(savedBids.length,6);
+  const showCols=allCols.slice().reverse().slice(0,maxImp);
   const origIdxs=showCols.map(c=>allCols.indexOf(c));
+
+  const savedCols=savedBids.slice(0,6); // up to 6 most recent saved bids shown first
+  const totalShown=savedCols.length+showCols.length;
 
   let active=its.filter(it=>{
     const row=impData.rows[it.item];
-    return row&&row.some(p=>p!=null);
+    const hasSaved=savedCols.some(p=>p.bids&&p.bids[it.item]!=null);
+    return hasSaved||(row&&row.some(p=>p!=null));
   });
   active=applyFlt(active,'bh');
 
   if(!active.length)return'<div style="padding:20px;color:var(--tx3);font-size:13px">No bid prices imported yet for this category. Use Upload Hub → Import Master Files.</div>';
 
   const note=`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">
-    Showing last ${showCols.length} of ${allCols.length} periods &nbsp;·&nbsp;
+    Showing last ${totalShown} of ${allCols.length+savedBids.length} periods &nbsp;·&nbsp;
     ${active.length} of ${its.length} items have bid history &nbsp;·&nbsp;
     <strong>*</strong> = most recent period
   </div>`;
@@ -2054,9 +2115,13 @@ function rBidHistImported(impData){
   h+='<th class="s2 sth resizable-th" style="width:82px;min-width:82px">Item #</th>';
   h+='<th class="s3 sth resizable-th" style="width:220px;min-width:220px;max-width:220px">Description</th>';
   h+='<th style="width:50px;min-width:50px">UM</th>';
+  // Saved bid columns (newest, in green)
+  savedCols.forEach((p,i)=>{
+    h+=`<th style="width:74px;min-width:74px;background:#1d6a4a;">${p.lbl} *</th>`;
+  });
+  // Imported columns
   showCols.forEach((col,i)=>{
-    const bg=i===0?'background:#1d6a4a;':'';
-    h+=`<th style="width:64px;min-width:64px;${bg}">${col}${i===0?' *':''}</th>`;
+    h+=`<th style="width:64px;min-width:64px;">${col}</th>`;
   });
   h+='<th style="width:30px"></th>';
   h+='</tr></thead><tbody>';
@@ -2072,19 +2137,24 @@ function rBidHistImported(impData){
     h+=`<td class="s2" style="font-size:11px">${it.item}</td>`;
     h+=`<td class="desc-cell s3" title="${it.desc||''}" style="font-size:11px;max-width:200px">${it.desc}</td>`;
     h+=`<td style="font-size:11px;color:var(--tx2)">${it.unit}</td>`;
+    // Saved bid cells
+    savedCols.forEach((p,i)=>{
+      const pv=p.bids&&p.bids[it.item]!=null?p.bids[it.item]:null;
+      const pp=i<savedCols.length-1&&savedCols[i+1].bids?savedCols[i+1].bids[it.item]||null:null;
+      let cls='pr';if(pv!=null&&pp!=null){if(pv>pp)cls+=' pu';else if(pv<pp)cls+=' pd';}
+      h+=`<td class="${cls}" style="background:rgba(29,106,74,.1);">${pv!=null?'$'+f(pv):'<span class="nc">—</span>'}</td>`;
+    });
+    // Imported cells
     origIdxs.forEach((origIdx,i)=>{
       const p=origIdx>=0?row[origIdx]:null;
-      const bg=i===0?'background:rgba(29,106,74,.08);':'';
       const prev=i<showCols.length-1?(origIdxs[i+1]>=0?row[origIdxs[i+1]]:null):null;
       let cls='pr';
       if(p!=null&&prev!=null){if(p>prev)cls+=' pu';else if(p<prev)cls+=' pd';}
-      h+=`<td class="${cls}" style="${bg}">${p!=null?'$'+f(p):'<span class="nc">—</span>'}</td>`;
+      h+=`<td class="${cls}">${p!=null?'$'+f(p):'<span class="nc">—</span>'}</td>`;
     });
     h+='</tr>';
   });
   h+='</tbody></table></div>';
-  const pgKey2='bh_'+S.casino.id+'_'+S.cat;
-  // pagination for imported history
   return rFltBar('bh')+note+h+rPgBar(pgd_bh,pgKey_bh);
 }
 
