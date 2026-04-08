@@ -430,8 +430,15 @@ async function sbLoad(){
         return;
       }
       const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser,_openC=DB._openC;
+      const _localPeriods=DB.periods?[...DB.periods]:[];
       Object.assign(DB, data.data);
       DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;DB._openC=_openC;
+      // Preserve any local periods not yet synced to Supabase (e.g. just uploaded weekly)
+      if(_localPeriods.length){
+        const sbIds=new Set((DB.periods||[]).map(p=>p.id));
+        const localOnly=_localPeriods.filter(p=>!sbIds.has(p.id));
+        if(localOnly.length) DB.periods=[...localOnly,...(DB.periods||[])].slice(0,12);
+      }
       _sbReady=true; // confirmed real data — safe to push from now on
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
@@ -1127,16 +1134,24 @@ function rPLHist(){
     });
   }
 
-  // One row per HKM code, sorted alphabetically
-  let allItems=Object.keys(latestData).sort().map(hkm=>{
-    const d=latestData[hkm];
+  // One row per HKM code in any period, sorted alphabetically
+  // Collect all HKM codes across all periods (not just the latest)
+  const allHkmCodes=new Set();
+  periods.forEach(p=>Object.keys(p.data).forEach(k=>allHkmCodes.add(k)));
+
+  let allItems=[...allHkmCodes].sort().map(hkm=>{
+    // Find desc/unit from ANY period (newest first) — handles missing desc in latest
+    let desc='',unit='';
+    for(const p of periods){
+      const pd=p.data[hkm];
+      if(pd){
+        if(pd.desc&&!desc) desc=pd.desc;
+        if(pd.unit&&!unit) unit=pd.unit;
+        if(desc&&unit) break;
+      }
+    }
     const casinoIt=hkmToCasino[hkm];
-    return{
-      hkm,
-      item:casinoIt?casinoIt.item:'',          // casino item # if this casino bids it
-      desc:d.desc||(casinoIt?casinoIt.desc:''),
-      unit:d.unit||(casinoIt?casinoIt.unit:''),
-    };
+    return{hkm,desc,unit};
   });
   allItems=applyFlt(allItems,'pl');
 
