@@ -397,6 +397,7 @@ function dbLoad(){
   try{const s=localStorage.getItem('hkm_db');if(s)Object.assign(DB,JSON.parse(s));}catch(e){}
 }
 function dbSave(){
+  DB._savedAt=new Date().toISOString(); // timestamp for conflict resolution
   try{localStorage.setItem('hkm_db',JSON.stringify(DB));}catch(e){}
   // Sync to Supabase if connected
   if(SB) sbSync();
@@ -408,19 +409,27 @@ async function sbSync(){
   try{
     const toSave=Object.assign({},DB);
     delete toSave._isAdmin;delete toSave._currentUser;delete toSave._openC;
+    // _savedAt is intentionally kept so Supabase carries the timestamp
     await SB.from('app_data').upsert({key:'hkm_main', data: toSave, updated_at: new Date().toISOString()}, {onConflict:'key'});
   }catch(e){console.warn('Supabase sync failed:',e.message);}
 }
 
-// Pull latest data from Supabase on load (overrides localStorage if newer)
+// Pull latest data from Supabase — only applies if Supabase data is newer than local
 async function sbLoad(){
   if(!SB) return;
   try{
     const {data,error} = await SB.from('app_data').select('data').eq('key','hkm_main').single();
     if(data&&data.data){
-      const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser;
+      const sbTime=data.data._savedAt?new Date(data.data._savedAt).getTime():0;
+      const localTime=DB._savedAt?new Date(DB._savedAt).getTime():0;
+      if(sbTime<localTime){
+        // Local data is newer (user saved then refreshed before sync completed) — keep local
+        _sbReady=true;
+        return;
+      }
+      const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser,_openC=DB._openC;
       Object.assign(DB, data.data);
-      DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;
+      DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;DB._openC=_openC;
       _sbReady=true; // confirmed real data — safe to push from now on
       localStorage.setItem('hkm_db', JSON.stringify(DB));
       render();
@@ -1254,7 +1263,7 @@ function rUPL(){return`
     <input type="text" id="pll" placeholder="e.g. Weekly 03/29 or MTH - RW, FB, SILV">
   </div>
   <div class="uz">
-    <input type="file" id="pf2" accept=".xlsx,.xls,.csv" onchange="queueFile(this,'hPL','pl')">
+    <input type="file" id="pf2" accept=".xlsx,.xls,.csv" onchange="autoFillPL(this);queueFile(this,'hPL','pl')">
     <div style="font-size:26px;margin-bottom:6px">📄</div>
     <div style="font-weight:700;color:var(--navy);margin-bottom:3px">Drop QB Price List here or click to browse</div>
     <div style="font-size:11px;color:var(--tx2)">.xlsx, .xls, or .csv</div>
@@ -1364,6 +1373,23 @@ function hQBE(inp){
     },
     error(e){hProg('qbe');sal('qa','Parse error: '+e.message,'er',0);}
   });
+}
+
+// Auto-fill period label from QB price list filename
+function autoFillPL(inp){
+  const lbl=document.getElementById('pll');
+  if(!lbl||lbl.value.trim())return; // don't overwrite if user already typed something
+  const name=(inp.files[0]||{}).name||'';
+  // Extract date pattern like 4.7.26 or 04.07.26 from filename
+  const m=name.match(/(\d{1,2})[.\-](\d{1,2})[.\-](\d{2,4})/);
+  if(m){
+    const mon=m[1].padStart(2,'0'),day=m[2].padStart(2,'0'),yr=m[3].slice(-2);
+    // Detect weekly vs monthly from filename
+    const isWkly=/week|wk|wkly/i.test(name);
+    const isMth=/mth|month/i.test(name);
+    if(isMth) lbl.value=`MTH - ${mon}/${day}/${yr}`;
+    else lbl.value=`Weekly ${mon}/${day}/${yr}`;
+  }
 }
 
 // 2. QB Price List — shift and load
