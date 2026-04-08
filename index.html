@@ -424,42 +424,42 @@ async function sbSync(){
   }catch(e){console.warn('Supabase sync failed:',e.message);}
 }
 
-// Pull latest data from Supabase — only applies if Supabase data is newer than local
-async function sbLoad(){
+// Pull latest data from Supabase — only applies if Supabase data is STRICTLY newer than local
+async function sbLoad(forceRender=false){
   if(!SB) return;
   try{
     const {data,error} = await SB.from('app_data').select('data').eq('key','hkm_main').single();
     if(data&&data.data){
       const sbTime=data.data._savedAt?new Date(data.data._savedAt).getTime():0;
       const localTime=DB._savedAt?new Date(DB._savedAt).getTime():0;
-      // Only skip Supabase if BOTH sides have timestamps and local is strictly newer
-      // (i.e. user saved then refreshed before sync completed)
-      // If Supabase has no timestamp it's older data that must be applied to avoid data loss
-      if(sbTime>0&&localTime>0&&sbTime<localTime){
+      // Skip if local is same age or newer — prevents the 60s poll from overwriting and re-rendering
+      if(sbTime>0&&localTime>0&&sbTime<=localTime){
         _sbReady=true;
         return;
       }
+      // Only load from Supabase if it is genuinely newer (another device/user saved)
       const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser,_openC=DB._openC;
       const _localPeriods=DB.periods?[...DB.periods]:[];
       Object.assign(DB, data.data);
       DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;DB._openC=_openC;
-      // Preserve any local periods not yet synced to Supabase (e.g. just uploaded weekly)
+      // Preserve any local periods not yet synced to Supabase
       if(_localPeriods.length){
         const sbIds=new Set((DB.periods||[]).map(p=>p.id));
         const localOnly=_localPeriods.filter(p=>!sbIds.has(p.id));
         if(localOnly.length) DB.periods=[...localOnly,...(DB.periods||[])].slice(0,12);
       }
-      _sbReady=true; // confirmed real data — safe to push from now on
+      _sbReady=true;
       localStorage.setItem('hkm_db', JSON.stringify(DB));
-      render();
+      if(forceRender) render(); // only re-render if caller explicitly requests it
     }
   }catch(e){console.warn('Supabase load failed:',e.message);}
 }
 
 dbLoad();
-// Load from Supabase after local load (async, won't block UI)
-setTimeout(()=>sbLoad(), 500);
-setInterval(()=>{if(SB)sbLoad();}, 60000);
+// Initial Supabase load on page load — render=true so we get the latest data shown immediately
+setTimeout(()=>sbLoad(true), 500);
+// Background poll every 60s — never triggers render (no scroll reset, no lost work)
+setInterval(()=>{if(SB)sbLoad(false);}, 60000);
 
 // Seed RWLV Asian from casino sheet (exact order)
 (function seed(){
@@ -569,8 +569,16 @@ function render(){
   updateHash();
   rBC();rTR();rSB();
   const el=document.getElementById('main');
+  // Save scroll positions before destroying DOM
+  const mainScrollY=el.scrollTop;
+  const twh=el.querySelector('.twh');
+  const twhScrollX=twh?twh.scrollLeft:0;
   const fn={dashboard:rDash,casino:rCasino,bids:rBids,upload:rUpload,bidoverview:rBidOverview};
   el.innerHTML=(fn[S.view]||rDash)();
+  // Restore scroll positions after render
+  el.scrollTop=mainScrollY;
+  const newTwh=el.querySelector('.twh');
+  if(newTwh) newTwh.scrollLeft=twhScrollX;
 }
 function nav(v,o={}){Object.assign(S,{view:v},...[o]);updateHash();render();}
 
