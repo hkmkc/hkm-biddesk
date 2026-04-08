@@ -422,8 +422,10 @@ async function sbLoad(){
     if(data&&data.data){
       const sbTime=data.data._savedAt?new Date(data.data._savedAt).getTime():0;
       const localTime=DB._savedAt?new Date(DB._savedAt).getTime():0;
-      if(sbTime<localTime){
-        // Local data is newer (user saved then refreshed before sync completed) — keep local
+      // Only skip Supabase if BOTH sides have timestamps and local is strictly newer
+      // (i.e. user saved then refreshed before sync completed)
+      // If Supabase has no timestamp it's older data that must be applied to avoid data loss
+      if(sbTime>0&&localTime>0&&sbTime<localTime){
         _sbReady=true;
         return;
       }
