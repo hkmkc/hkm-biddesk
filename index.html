@@ -1693,6 +1693,9 @@ function saveBid(){
   DB.savedBids[key].unshift({id:'sb'+Date.now(),lbl,dt:fromEl.value,bids});
   if(DB.savedBids[key].length>30) DB.savedBids[key]=DB.savedBids[key].slice(0,30);
   its.forEach(it=>{const nk=`${S.casino.id}|${S.cat}|${it.item}`;delete DB.newB[nk];});
+  // Push notification for team members — stored in DB so it syncs to their session via Supabase
+  const casinoName=S.casino.name||S.casino.id;
+  addNotif(`📋 New pricing submitted: ${casinoName} — ${S.cat}. Effective ${lbl}.`,'green');
   dbSave();
   sal('bal',`✓ ${n} bid prices saved — effective ${lbl}`,'ok');
   render();
@@ -2732,7 +2735,7 @@ function getPendingAlertCount(){
   return cnt;
 }
 function buildNotifItems(){
-  if(!DB._notifs||!DB._notifs.length)return'<div class="notif-item"><div class="notif-msg" style="color:var(--tx3)">No notifications yet. Enable browser alerts to receive bid reminders.</div></div>';
+  if(!DB._notifs||!DB._notifs.length)return`<div class="notif-item"><div class="notif-msg" style="color:var(--tx3)">${DB._isAdmin?'No notifications yet. Enable browser alerts to receive bid due date reminders.':'No notifications yet. You\'ll be notified here when new bid prices are submitted.'}</div></div>`;
   return DB._notifs.slice().reverse().slice(0,20).map(n=>{
     const col=n.urgency==='red'?'red':n.urgency==='yellow'?'yellow':'green';
     return`<div class="notif-item">
@@ -3136,6 +3139,8 @@ function requestAlerts(){
   });
 }
 function checkAlerts(){
+  // Due-date alerts are admin-only — members get bid submission alerts instead
+  if(!DB._isAdmin) return;
   if(!('Notification' in window)||Notification.permission!=='granted')return;
   const now=getPST();
   if(!DB.alertsSent)DB.alertsSent={};
