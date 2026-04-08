@@ -574,8 +574,7 @@ const tdl=()=>{const d=new Date();return(d.getMonth()+1).toString().padStart(2,'
 
 // ── RENDER ──
 function render(){
-  if(!DB._isAdmin&&S.view==='upload'){S.view='dashboard';}
-  if(!DB._isAdmin&&S.bTab==='draftbid'){S.bTab='bidhistory';}
+  if(!DB._isAdmin&&S.view==='upload'){S.view='upload';} // show upload but with lock screen
   updateHash();
   rBC();rTR();rSB();
   const el=document.getElementById('main');
@@ -631,7 +630,7 @@ function rSB(){
   if(!el)return;
   let h='<div class="sb-sec">Navigation</div>';
   h+=`<div class="sb-item ${S.view==='dashboard'?'on':''}" onclick="nav('dashboard')"><span class="sb-icon">&#9632;</span> Dashboard</div>`;
-  if(DB._isAdmin)h+=`<div class="sb-item ${S.view==='upload'?'on':''}" onclick="nav('upload')"><span class="sb-icon">&#8679;</span> Upload Hub</div>`;
+  h+=`<div class="sb-item ${S.view==='upload'?'on':''}" onclick="nav('upload')"><span class="sb-icon">&#8679;</span> Upload Hub${!DB._isAdmin?' 🔒':''}</div>`;
   h+='<div class="sb-divider"></div>';
   h+='<div class="sb-sec">Casinos</div>';
   const sortedCasinos=[...DB.casinos].sort((a,b)=>a.name.localeCompare(b.name));
@@ -776,10 +775,16 @@ ${c.cats.map(cat=>`<div class="qc" onclick="nav('bids',{cat:'${cat}',bTab:'bidsh
 
 // ── BIDS ──
 function rBids(){
-  const tabs=DB._isAdmin
-    ?[{id:'bidhistory',l:'Bid Price History'},{id:'plhistory',l:'Price List History'},{id:'draftbid',l:'Draft Bid'}]
-    :[{id:'bidhistory',l:'Bid Price History'},{id:'plhistory',l:'Price List History'}];
-  const fn={draftbid:rDraftBid,bidhistory:rBidHist,plhistory:rPLHist};
+  const tabs=[
+    {id:'bidhistory',l:'Bid Price History'},
+    {id:'plhistory',l:'Price List History'},
+    {id:'draftbid',l:DB._isAdmin?'Draft Bid':'Draft Bid 🔒'},
+  ];
+  const fn={
+    draftbid:DB._isAdmin?rDraftBid:()=>rLocked('You do not have access to this field.'),
+    bidhistory:rBidHist,
+    plhistory:rPLHist
+  };
   const crumb=`<div style="font-size:12px;color:var(--tx2);margin-bottom:20px;display:flex;align-items:center;gap:5px">
     <span style="cursor:pointer;color:var(--tx3)" onclick="nav('dashboard')">Dashboard</span>
     <span style="color:var(--bd2)">›</span>
@@ -1243,8 +1248,18 @@ function rPLHist(){
 ${rPgBar(pgd_pl,pgKey_pl)}`;
 }
 
+// ── ACCESS DENIED SCREEN ──
+function rLocked(msg='You do not have access to this feature.'){
+  return`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:18px;color:var(--tx3)">
+    <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <div style="font-size:18px;font-weight:700;color:#bbb">Oops!</div>
+    <div style="font-size:14px;color:#ccc;text-align:center;max-width:280px">${msg}</div>
+  </div>`;
+}
+
 // ── UPLOAD HUB ──
 function rUpload(){
+  if(!DB._isAdmin) return rLocked('You do not have access to this field.');
   const tabs=[{id:'qbe',l:'1 QBE Purchase History'},{id:'pl',l:'2 QB Price List'},{id:'casino',l:'3 Casino Sheet'},{id:'addbid',l:'4 Add Category / Casino'},{id:'import',l:'5 Import Master Files'}];
   return`
 <div style="margin-bottom:18px">
@@ -2917,38 +2932,19 @@ ${DB._isAdmin ? `
   </div>
 </div>` : `
 <div style="border-top:1px solid var(--bd);padding-top:16px">
-  <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:12px">📋 Current Active Bids</div>
-  ${(()=>{
-    const rows=[];
-    [...DB.casinos].sort((a,b)=>a.name.localeCompare(b.name)).forEach(casino=>{
-      (casino.cats||[]).sort((a,b)=>a.localeCompare(b)).forEach(cat=>{
-        const items=gI(casino.id,cat);
-        const priced=items.filter(it=>getLastBid(casino.id,cat,it.item)!=null);
-        if(!priced.length) return;
-        const isWkly=isCatWeekly(casino.id,cat);
-        rows.push(`<tr>
-          <td style="font-weight:700;color:var(--navy);font-size:12px">${casino.name}</td>
-          <td style="font-size:12px">${cat}</td>
-          <td><span class="bdg ${isWkly?'bc2':'bp'}">${isWkly?'Weekly':'Monthly'}</span></td>
-          <td style="font-size:12px;color:var(--tx3)">${priced.length} item${priced.length!==1?'s':''} priced</td>
-          <td style="font-size:12px">
-            <button class="btn btn-sm" onclick="nav('bids',{casino:${JSON.stringify(casino).replace(/"/g,"'")},cat:'${cat}',bTab:'bidhistory'})">View →</button>
-          </td>
-        </tr>`);
-      });
-    });
-    if(!rows.length) return '<p style="color:var(--tx3);font-size:13px;padding:12px 0">No active bids yet. Ask your admin to import data.</p>';
-    return `<div class="tw"><table style="width:100%">
-      <thead><tr>
-        <th style="min-width:160px">Casino</th>
-        <th style="min-width:120px">Category</th>
-        <th style="width:80px">Type</th>
-        <th style="width:110px">Items</th>
-        <th style="width:80px"></th>
-      </tr></thead>
-      <tbody>${rows.join('')}</tbody>
-    </table></div>`;
-  })()}
+  <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">🏨 Casino Bid Overview</div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px">
+    ${[...DB.casinos].sort((a,b)=>a.name.localeCompare(b.name)).map(casino=>{
+      const totalItems=((casino.cats||[]).reduce((n,cat)=>n+gI(casino.id,cat).length,0));
+      const pricedItems=(casino.cats||[]).reduce((n,cat)=>n+gI(casino.id,cat).filter(it=>getLastBid(casino.id,cat,it.item)!=null).length,0);
+      return`<div onclick="nav('bidoverview',{ovCasino:${JSON.stringify(casino).replace(/"/g,"'")}})" style="background:#fff;border:1.5px solid var(--bd2);border-radius:10px;padding:16px 20px;min-width:200px;flex:1;cursor:pointer;transition:.15s;box-shadow:0 1px 4px rgba(0,0,0,.06)" onmouseover="this.style.borderColor='var(--navy)';this.style.boxShadow='0 4px 16px rgba(27,92,158,.12)'" onmouseout="this.style.borderColor='var(--bd2)';this.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">${casino.name}</div>
+        <div style="font-size:11px;color:var(--tx2);margin-bottom:10px">${casino.short||''} &nbsp;·&nbsp; ${(casino.cats||[]).length} categories</div>
+        <div style="font-size:11px;color:var(--tx3)">${pricedItems} of ${totalItems} items priced</div>
+        <div style="margin-top:10px;font-size:11px;color:var(--navy);font-weight:700">View Bid Overview →</div>
+      </div>`;
+    }).join('')}
+  </div>
 </div>`}</div>`;
 }
 function dashSearch(){
