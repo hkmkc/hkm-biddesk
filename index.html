@@ -3125,7 +3125,8 @@ function requestAlerts(){
   Notification.requestPermission().then(p=>{
     const el=document.getElementById('alert-status');
     if(el)el.textContent=p==='granted'?'✓ Browser alerts active':'Blocked — check browser settings';
-    if(p==='granted'){checkAlerts();rTR();}
+    if(p==='granted'){startAlerts();rTR();}
+    else{rTR();}
   });
 }
 function checkAlerts(){
@@ -3287,14 +3288,7 @@ function getBellAlerts(){
   });
   return out;
 }
-function requestAlerts(){
-  if(!('Notification' in window)){alert('Browser notifications not supported.');return;}
-  Notification.requestPermission().then(p=>{
-    rTR(); // refresh bell panel
-    if(p==='granted'){checkAlerts();alert('✓ Browser alerts enabled!');}
-    else{alert('Alerts blocked. Enable in your browser site settings.');}
-  });
-}
+// requestAlerts() defined above in ALERT SYSTEM section — duplicate removed
 
 // ══════════════════════════════════════════════════════════════
 //  UPLOAD QUEUE — files are staged, not immediately processed
@@ -3664,20 +3658,15 @@ document.addEventListener('click',function(e){
 
 // ── User helpers — DB-synced so cross-device ──
 function getUsers(){
-  if(DB._users&&DB._users.length>0) return DB._users;
-  try{ return getUsers(); }catch(e){return [];}
+  if(!DB._users) DB._users=[];
+  return DB._users;
 }
 function saveUsers(users){
   DB._users=users;
   dbSave();
-  try{ saveUsers(users); }catch(e){}
 }
 function migrateLocalUsers(){
-  if(DB._users&&DB._users.length>0) return;
-  try{
-    const local=getUsers();
-    if(local.length>0){DB._users=local;dbSave();}
-  }catch(e){}
+  if(!DB._users) DB._users=[];
 }
 
 // ── INIT ──
