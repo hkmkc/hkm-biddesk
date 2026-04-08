@@ -2843,13 +2843,22 @@ function rDash(){
     const status=getBidStatus(dd.id);
     const nextStr=next.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'short',month:'short',day:'numeric'});
     const cntClass=ms<0?'cnt-red':ms<86400000?'cnt-red':ms<3*86400000?'cnt-yellow':'cnt-green';
-    return`<tr>
-      <td style="font-weight:700;color:var(--navy);white-space:nowrap">${dd.name}</td>
-      <td style="font-size:11px;color:var(--tx2)">${dd.label}</td>
-      <td style="white-space:nowrap">${nextStr}</td>
+    // Split label into schedule (day) and time parts
+    const lbl=dd.label||'';
+    const timePart=lbl.match(/\d{1,2}:\d{2}\s*(AM|PM)\s*(PST)?/i);
+    const schedPart=lbl.replace(timePart?timePart[0]:'','').replace(/,\s*$/,'').trim();
+    const timeStr=timePart?timePart[0].trim():'Within the day';
+    const isDone=status==='submitted'||status==='admin';
+    const rowStyle=isDone?'background:rgba(16,185,129,.06);':'';
+    const checkmark=isDone?`<span style="color:#10b981;font-size:15px;margin-left:6px;font-weight:700" title="${status==='submitted'?'Submitted':'Done by admin'}">✓</span>`:'';
+    return`<tr style="${rowStyle}">
+      <td style="font-weight:700;color:var(--navy);white-space:nowrap">${dd.name}${checkmark}</td>
+      <td style="font-size:11px;color:var(--tx2);white-space:nowrap">${schedPart}</td>
+      <td style="font-size:11px;color:var(--tx2);white-space:nowrap">${timeStr}</td>
+      <td style="white-space:nowrap;font-weight:600;font-size:12px">${nextStr}</td>
       <td class="${cntClass}" style="white-space:nowrap;font-weight:700">${fmtCountdown(ms)}</td>
       <td>
-        <select class="bid-status ${statusClass(status)}" onchange="setBidStatus('${dd.id}',this.value);this.className='bid-status '+statusClass(this.value)">
+        <select class="bid-status ${statusClass(status)}" onchange="setBidStatus('${dd.id}',this.value);this.className='bid-status '+statusClass(this.value);this.closest('tr').style.background=(this.value==='submitted'||this.value==='admin')?'rgba(16,185,129,.06)':'';this.closest('tr').querySelector('td:first-child').querySelector('span')?this.closest('tr').querySelector('td:first-child').querySelector('span').remove():null;">
           <option value="">— status —</option>
           <option value="working"${status==='working'?' selected':''}>🔵 Working on it</option>
           <option value="pending"${status==='pending'?' selected':''}>🟡 Pending for checking</option>
@@ -2885,15 +2894,15 @@ ${DB._isAdmin ? `
   <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:8px">📅 Weekly Bids</div>
   <div class="dd-table-wrap">
     <table class="dd-table">
-      <colgroup><col style="width:18%"><col style="width:30%"><col style="width:14%"><col style="width:13%"><col style="width:25%"></colgroup>
-      <thead><tr><th>Casino</th><th>Schedule</th><th>Next Due</th><th>Countdown</th><th>Status</th></tr></thead>
+      <colgroup><col style="width:16%"><col style="width:20%"><col style="width:14%"><col style="width:14%"><col style="width:12%"><col style="width:24%"></colgroup>
+      <thead><tr><th>Casino</th><th>Schedule</th><th>Time (PST)</th><th>Due Date</th><th>Countdown</th><th>Status</th></tr></thead>
       <tbody>${weekly.map(dd=>ddRow(dd)).join('')}</tbody></table>
   </div>
   <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:8px;margin-top:18px">📅 Monthly Bids</div>
   <div class="dd-table-wrap">
     <table class="dd-table">
-      <colgroup><col style="width:18%"><col style="width:30%"><col style="width:14%"><col style="width:13%"><col style="width:25%"></colgroup>
-      <thead><tr><th>Casino</th><th>Schedule</th><th>Next Due</th><th>Countdown</th><th>Status</th></tr></thead>
+      <colgroup><col style="width:16%"><col style="width:20%"><col style="width:14%"><col style="width:14%"><col style="width:12%"><col style="width:24%"></colgroup>
+      <thead><tr><th>Casino</th><th>Schedule</th><th>Time (PST)</th><th>Due Date</th><th>Countdown</th><th>Status</th></tr></thead>
       <tbody>${monthly.map(dd=>ddRow(dd)).join('')}</tbody></table>
   </div>
 </div>` : `
@@ -3208,16 +3217,20 @@ function getStatusKey(ddId){
   const dd=DUE_DATES.find(d=>d.id===ddId);
   if(!dd)return ddId;
   if(dd.type==='weekly'){
-    const d=new Date(now);d.setDate(d.getDate()-((d.getDay()+6)%7));
-    return`${ddId}_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // Key off the actual due date (Thursday, Friday etc.) — stable for the whole week
+    const next=getNextDue(dd);
+    // If overdue by less than 2 days, still key to that due date
+    const ref=next-now>0?next:now;
+    const due=getNextDue(dd);
+    return`${ddId}_${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}-${String(due.getDate()).padStart(2,'0')}`;
   }
   return`${ddId}_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 }
 function setBidStatus(ddId,val){
   if(!DB.bidStatus)DB.bidStatus={};
-  const terminalStates=['submitted','closed','admin'];
   DB.bidStatus[getStatusKey(ddId)]={val,ts:Date.now()};
   dbSave();
+  render(); // re-render so checkmark and row highlight appear immediately
 }
 function getBidStatus(ddId){
   if(!DB.bidStatus)return'';
