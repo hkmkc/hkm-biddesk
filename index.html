@@ -1340,10 +1340,10 @@ function rUCasino(){return`
   </div>
   <div style="margin-bottom:10px;display:flex;gap:10px">
     <div style="flex:1"><label class="fl">Casino</label>
-      <select id="ccas" onchange="updCCat()">${DB.casinos.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${S._ucCas===c.id?' selected':''}>${c.name}</option>`).join('')}</select>
+      <select id="ccas" onchange="updCCat()">${(()=>{const sorted=[...DB.casinos].sort((a,b)=>a.name.localeCompare(b.name));if(!S._ucCas)S._ucCas=sorted[0]?.id;return sorted.map(c=>`<option value="${c.id}"${S._ucCas===c.id?' selected':''}>${c.name}</option>`).join('');})()}</select>
     </div>
     <div style="flex:1"><label class="fl">Category</label>
-      <select id="ccat">${(()=>{const cid=S._ucCas||(DB.casinos[0]&&DB.casinos[0].id);const cas=DB.casinos.find(c=>c.id===cid);const cats=[...(cas&&cas.cats||CL)].sort();return cats.map(c=>`<option value="${c}"${S._ucCat===c?' selected':''}>${c}</option>`).join('');})()}</select>
+      <select id="ccat">${(()=>{const cas=DB.casinos.find(c=>c.id===S._ucCas);const cats=[...(cas&&cas.cats||CL)].sort();if(!S._ucCat||!cats.includes(S._ucCat))S._ucCat=cats[0]||'';return cats.map(c=>`<option value="${c}"${S._ucCat===c?' selected':''}>${c}</option>`).join('');})()}</select>
     </div>
   </div>
   <div class="uz">
@@ -1567,8 +1567,9 @@ function parseSheetFile(file, onSuccess, onError){
         .filter(r=>r&&r[itemCol]&&r[itemCol].toString().trim())
         .map(r=>({
           item:r[itemCol].toString().trim(),
-          desc:(r[descCol]||'').toString().trim(),
-          unit:(r[unitCol]||'').toString().trim(),
+          // Strip embedded newlines/carriage returns from description (casino files often have them)
+          desc:(r[descCol]||'').toString().replace(/[\r\n]+/g,' ').trim(),
+          unit:(r[unitCol]||'').toString().replace(/[\r\n]+/g,' ').trim(),
           hkm:'',
         }))
         // Filter out obvious non-item rows (totals, notes, blank item numbers)
@@ -1587,11 +1588,14 @@ function updCCat(){
   if(!sel)return;
   const cid=sel.value;
   S._ucCas=cid;
-  S._ucCat=null;
   const cas=DB.casinos.find(c=>c.id===cid);
   const cats=[...(cas&&cas.cats||CL)].sort();
+  S._ucCat=cats[0]||'';
   const ccat=document.getElementById('ccat');
-  if(ccat) ccat.innerHTML=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  if(ccat){
+    ccat.innerHTML=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+    ccat.onchange=function(){S._ucCat=this.value;};
+  }
 }
 function hCasino(inp){
   const file=inp.files[0];if(!file)return;
@@ -1603,12 +1607,16 @@ function hCasino(inp){
     function(data){
       // Preserve our HKM codes — never take anything from the casino sheet except item#/desc/unit
       const old=DB.items[`${cid}|${cat}`]||[];
+      const prevCount=old.length;
       const hmap={};old.forEach(it=>{if(it.hkm)hmap[it.item]=it.hkm;});
       data.forEach(it=>{if(hmap[it.item])it.hkm=hmap[it.item];});
+      // FULL REPLACEMENT — casino's current list is the source of truth for item order and membership
       DB.items[`${cid}|${cat}`]=data;
       dbSave();hProg('cs');
-      sal('ca',`${data.length} items loaded in casino order. Item #, Description and Unit only — all other casino columns ignored.`,'ok');
-      inp.value='';
+      const removed=prevCount-data.length;
+      const cas=DB.casinos.find(c=>c.id===cid);
+      sal('ca',`✓ ${cas?.name||cid} › ${cat} updated to ${data.length} items (was ${prevCount}${removed>0?' — '+removed+' items removed':''}). HKM codes preserved. Bid history and QBE data untouched.`,'ok');
+      rSB();render();inp.value='';
     },
     function(err){hProg('cs');sal('ca',err,'er',0);inp.value='';}
   );
