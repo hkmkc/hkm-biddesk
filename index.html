@@ -1987,58 +1987,86 @@ function calcSignal(lps, lastBid) {
 }
 
 // Main auto-price function — fills DB.newB for all items in current category
+// Follows SOP v5.1: Cost Delta → Activity Gate → QB Check → Demand Signal → Decrease Gate → Step → Margin Floor
 function runAutoPrice() {
   const its = gI(S.casino.id, S.cat);
-  const pa  = DB.periods[S.cA] || DB.periods[0];
-  let applied=0, holds=0, increases=0, decreases=0, flagged=0;
-  const log = [];
+  const pa  = DB.periods[S.cA] || DB.periods[0];  // Period A = current cost
+  const pb  = DB.periods[S.cB] || DB.periods[1];  // Period B = previous cost
+  let applied=0, holds=0, increases=0, decreases=0, costDeltaHits=0, marginFloorHits=0;
 
   its.forEach(it => {
     const lps = gL(S.casino.id, it.item);
-    const h   = gH(S.casino.id, S.cat, it.item);
-    const lb  = h[CW-1] != null ? h[CW-1] : h[CW];
-    const nk  = S.casino.id+'|'+S.cat+'|'+it.item;
-    const acCost = pa.data[it.item] ? pa.data[it.item].cost : null;
+    // Look up cost by HKM code (period data keyed by HKM), fall back to item code
+    const _key = it.hkm && it.hkm.trim() ? it.hkm.trim() : it.item;
+    const acCost = (pa.data[_key]?.cost) || (pa.data[it.item]?.cost) || null;
+    const bcCost = pb ? ((pb.data[_key]?.cost) || (pb.data[it.item]?.cost) || null) : null;
 
-    // Can't price without a last bid
-    if (lb == null) { log.push(it.item+': no last bid — skipped'); return; }
+    // Last bid: use getLastBid() which checks savedBids → bidH → impBH
+    const lb = getLastBid(S.casino.id, S.cat, it.item);
+    const nk = S.casino.id+'|'+S.cat+'|'+it.item;
 
-    let sig = demandSignal(lps);
-    let action = sig.action;
-    let note   = sig.note;
+    if (lb == null) { holds++; return; } // can't price without a last bid
 
-    // Margin floor check — if last bid is below floor, force INCREASE
-    if (acCost && lb < acCost * (1 + SOP.marginFloor)) {
-      action = 'INCREASE';
-      note   = 'Margin floor';
-      flagged++;
-    }
-
-    const step  = sopStep(lb);
+    // ── STEP 1: Cost Delta (SOP v5.1 — mandatory, applied before all other logic) ──
+    const costDelta = (acCost != null && bcCost != null) ? Math.round((acCost - bcCost) * 100) / 100 : 0;
     let newPrice = lb;
+    let action = 'HOLD', note = '';
 
-    if (action === 'INCREASE') {
-      newPrice = Math.round((lb + step) * 100) / 100;
-      // Ensure margin floor met
-      if (acCost) newPrice = Math.max(newPrice, Math.round(acCost * (1 + SOP.marginFloor) * 100) / 100);
-      increases++;
-    } else if (action === 'DECREASE') {
-      newPrice = Math.round((lb - step) * 100) / 100;
+    if (costDelta !== 0) {
+      newPrice = Math.round((lb + costDelta) * 100) / 100;
       if (newPrice < 0.01) newPrice = 0.01;
-      // Never go below margin floor
-      if (acCost && newPrice < acCost * (1 + SOP.marginFloor)) {
-        newPrice = lb; action = 'HOLD'; note = 'Floor stop';
-        holds++;
-      } else decreases++;
-    } else holds++;
+      action = costDelta > 0 ? 'INCREASE' : 'DECREASE';
+      note = `Cost delta ${costDelta > 0 ? '+' : ''}$${Math.abs(costDelta).toFixed(2)}`;
+      costDeltaHits++;
+      if (costDelta > 0) increases++; else decreases++;
+    } else {
+      // ── STEP 2: Activity Gate — v90 = 0 → INACTIVE ──
+      const vol90 = lps.vol90 || 0;
+      if (vol90 === 0) {
+        // Inactive: only raise for margin floor, never lower
+        if (acCost && lb < acCost / (1 - SOP.marginFloor)) {
+          newPrice = Math.ceil((acCost / (1 - SOP.marginFloor)) / sopStep(lb)) * sopStep(lb);
+          action = 'INCREASE'; note = 'Inactive/margin floor'; marginFloorHits++; increases++;
+        } else {
+          action = 'HOLD'; note = 'Inactive'; holds++;
+        }
+      } else {
+        // ── STEP 3: Demand Signal (Phases A–D) ──
+        const sig = demandSignal(lps);
+        action = sig.action; note = sig.note;
+
+        // ── STEP 4: Decrease Gate — DECREASE only if v30 > 0 ──
+        if (action === 'DECREASE' && (lps.v30 || 0) === 0) {
+          action = 'HOLD'; note = 'Decrease gate (v30=0)';
+        }
+
+        const step = sopStep(lb);
+        if (action === 'INCREASE') {
+          newPrice = Math.round((lb + step) * 100) / 100;
+          // Snap up to margin floor if needed
+          if (acCost) newPrice = Math.max(newPrice, Math.ceil((acCost / (1 - SOP.marginFloor)) / step) * step);
+          increases++;
+        } else if (action === 'DECREASE') {
+          newPrice = Math.round((lb - step) * 100) / 100;
+          if (newPrice < 0.01) newPrice = 0.01;
+          // ── STEP 5: Margin Floor — block decrease if it breaches 10% ──
+          if (acCost && newPrice < acCost / (1 - SOP.marginFloor)) {
+            newPrice = lb; action = 'HOLD'; note = 'Margin floor stop'; marginFloorHits++;
+            holds++;
+          } else decreases++;
+        } else holds++;
+      }
+    }
 
     DB.newB[nk] = String(newPrice.toFixed(2));
     applied++;
   });
 
   dbSave();
-  const summary = `Auto-Price complete: ${applied} items — ${increases} INCREASE, ${decreases} DECREASE, ${holds} HOLD${flagged?' ('+flagged+' margin floor overrides)':''}`;
-  sal('draft-al', summary, 'ok', 8000);
+  const parts = [`${applied} items priced`, `${increases} INCREASE`, `${decreases} DECREASE`, `${holds} HOLD`];
+  if (costDeltaHits)    parts.push(`${costDeltaHits} cost delta applied`);
+  if (marginFloorHits)  parts.push(`${marginFloorHits} margin floor overrides`);
+  sal('draft-al', `✓ Auto-Price (SOP v5.1): ${parts.join(' · ')}`, 'ok', 10000);
   render();
 }
 
