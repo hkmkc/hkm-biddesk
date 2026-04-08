@@ -440,11 +440,18 @@ async function sbLoad(forceRender=false){
       // Only load from Supabase if it is genuinely newer (another device/user saved)
       const _isAdmin=DB._isAdmin,_currentUser=DB._currentUser,_openC=DB._openC;
       const _localBidStatus=DB.bidStatus?{...DB.bidStatus}:{};
+      const _localUsers=DB._users&&DB._users.length>0?[...DB._users]:[];
       const _localPeriods=DB.periods?[...DB.periods]:[];
       Object.assign(DB, data.data);
       DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;DB._openC=_openC;
-      // Merge bidStatus: local entries always win (they are the most recently set by this user)
+      // Merge bidStatus: local entries always win
       DB.bidStatus=Object.assign({},DB.bidStatus||{},_localBidStatus);
+      // Merge _users: keep all unique emails from both local and Supabase, local approval state wins
+      if(_localUsers.length){
+        const sbEmails=new Map((DB._users||[]).map(u=>[u.email.toLowerCase(),u]));
+        _localUsers.forEach(lu=>{sbEmails.set(lu.email.toLowerCase(),lu);});
+        DB._users=[...sbEmails.values()];
+      }
       // Preserve any local periods not yet synced to Supabase
       if(_localPeriods.length){
         const sbIds=new Set((DB.periods||[]).map(p=>p.id));
