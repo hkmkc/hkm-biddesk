@@ -523,7 +523,7 @@ setInterval(()=>{if(SB)sbLoad(false);}, 60000);
 // ── STATE ──
 const S={
   view:'dashboard',casino:null,cat:null,
-  bTab:'bidhistory',uTab:'qbe',plTab:'hist',
+  bTab:'draftbid',uTab:'qbe',plTab:'hist',
   selW:new Set(WK.slice(-8).map(w=>w.id)),
   wf:'all',cA:0,cB:1,wkDropOpen:false,
   pg:{},pgSz:10,flt:{hkmOnly:false,pricedOnly:false,q:''},
@@ -762,7 +762,7 @@ function rCasino(){const c=S.casino;return`
   <div style="font-size:13px;color:var(--tx2)">Select a bid category</div>
 </div>
 <div class="qgrid" style="margin-bottom:22px">
-${c.cats.map(cat=>`<div class="qc" onclick="nav('bids',{casino:${JSON.stringify(c).replace(/"/g,"'")},cat:'${cat}',bTab:'bidhistory'})">
+${c.cats.map(cat=>`<div class="qc" onclick="nav('bids',{cat:'${cat}',bTab:'bidhistory'})">
   <div class="qi" style="display:none"></div>
   <div class="qn">${cat}</div>
   <div class="qct">${gI(c.id,cat).length} items</div>
@@ -817,8 +817,7 @@ function rBids(){
       ${dlDrop}
     </div>
   </div>`;
-  const fallbackFn=DB._isAdmin?rDraftBid:()=>rLocked('You do not have access to this field.');
-  return crumb+tabsRow+`<div id="bal" class="al"></div>${(fn[S.bTab]||fallbackFn)()}`;
+  return crumb+tabsRow+`<div id="bal" class="al"></div>${(fn[S.bTab]||rDraftBid)()}`;
 }
 // ── DOWNLOAD ──
 function downloadTab(fmt){
