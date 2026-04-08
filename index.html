@@ -407,7 +407,7 @@ async function sbSync(){
   if(!_sbReady){console.warn('Supabase push blocked — data not yet confirmed from server.');return;}
   try{
     const toSave=Object.assign({},DB);
-    delete toSave._isAdmin;delete toSave._currentUser;
+    delete toSave._isAdmin;delete toSave._currentUser;delete toSave._openC;
     await SB.from('app_data').upsert({key:'hkm_main', data: toSave, updated_at: new Date().toISOString()}, {onConflict:'key'});
   }catch(e){console.warn('Supabase sync failed:',e.message);}
 }
@@ -536,10 +536,11 @@ const tdl=()=>{const d=new Date();return(d.getMonth()+1).toString().padStart(2,'
 
 // ── RENDER ──
 function render(){
-  rBC();rTR();rSB();
-  const el=document.getElementById('main');
   if(!DB._isAdmin&&S.view==='upload'){S.view='dashboard';}
   if(!DB._isAdmin&&S.bTab==='draftbid'){S.bTab='bidhistory';}
+  updateHash();
+  rBC();rTR();rSB();
+  const el=document.getElementById('main');
   const fn={dashboard:rDash,casino:rCasino,bids:rBids,upload:rUpload,bidoverview:rBidOverview};
   el.innerHTML=(fn[S.view]||rDash)();
 }
@@ -560,18 +561,20 @@ function updateHash(){
 }
 
 function restoreFromHash(){
+  // Always start with all casinos collapsed — only open what's needed
+  DB._openC={};
   const hash=location.hash.replace('#','');
   if(!hash||hash==='dashboard')return;
   const p=hash.split('/');
   if(p[0]==='bids'&&p[1]&&p[2]){
     const c=DB.casinos.find(x=>x.id===p[1]);
-    if(c){S.view='bids';S.casino=c;S.cat=decodeURIComponent(p[2]);S.bTab=p[3]||'bidhistory';}
+    if(c){S.view='bids';S.casino=c;S.cat=decodeURIComponent(p[2]);S.bTab=p[3]||'bidhistory';DB._openC[c.id]=true;}
   }else if(p[0]==='bidoverview'&&p[1]){
     const c=DB.casinos.find(x=>x.id===p[1]);
-    if(c){S.view='bidoverview';S.ovCasino=c;}
+    if(c){S.view='bidoverview';S.ovCasino=c;DB._openC[c.id]=true;}
   }else if(p[0]==='casino'&&p[1]){
     const c=DB.casinos.find(x=>x.id===p[1]);
-    if(c){S.view='casino';S.casino=c;}
+    if(c){S.view='casino';S.casino=c;DB._openC[c.id]=true;}
   }else if(p[0]==='upload'&&DB._isAdmin){
     S.view='upload';S.uTab=p[1]||'qbe';
   }
@@ -1124,8 +1127,19 @@ function rPLHist(){
   const colHeaders3=periods.map(()=>`<th style="background:var(--navy4);font-size:10px;padding:5px 8px;border:1px solid rgba(255,255,255,.2);width:60px;min-width:60px;text-align:right">Cost</th><th style="background:var(--navy4);font-size:10px;padding:5px 8px;border:1px solid rgba(255,255,255,.2);width:60px;min-width:60px;text-align:right">Price</th>`).join('');
 
   const rows=pgd_pl.items.map((it,_ri)=>{
+    const itemKey=it.hkm&&it.hkm.trim()?it.hkm.trim():it.item;
+    // Use HKM's own desc/unit from period data (QB price list), fall back to casino item data
+    let hkmDesc=it.desc||'', hkmUnit=it.unit||'';
+    for(const p of periods){
+      const d=p.data[itemKey]||p.data[it.item];
+      if(d&&(d.desc||d.unit)){
+        if(d.desc) hkmDesc=d.desc;
+        if(d.unit) hkmUnit=d.unit;
+        break;
+      }
+    }
     const periodCells=periods.map(p=>{
-      const d=p.data[it.hkm&&it.hkm.trim()?it.hkm.trim():it.item]||p.data[it.item];
+      const d=p.data[itemKey]||p.data[it.item];
       return d&&(d.cost>0||d.reg>0)
         ?`<td class="nr" style="font-size:11px;color:var(--tx2);padding:5px 8px">${d.cost!=null&&d.cost>0?'$'+f(d.cost):'—'}</td><td class="pr" style="font-size:11px;padding:5px 8px">${d.reg!=null&&d.reg>0?'$'+f(d.reg):'—'}</td>`
         :`<td style="color:var(--tx3);text-align:center;padding:5px 8px">—</td><td style="color:var(--tx3);text-align:center;padding:5px 8px">—</td>`;
@@ -1135,8 +1149,8 @@ function rPLHist(){
       <td class="rn">${_prn}</td>
       <td style="font-size:11px;color:#0c447c;font-weight:700;min-width:62px">${it.hkm||'<span class="nc">—</span>'}</td>
       <td style="font-size:11px;min-width:90px">${it.item}</td>
-      <td class="desc-cell" title="${it.desc||''}" style="font-size:11px;max-width:220px">${it.desc}</td>
-      <td style="font-size:11px;color:var(--tx2);min-width:46px">${it.unit}</td>
+      <td class="desc-cell" title="${hkmDesc}" style="font-size:11px;max-width:220px">${hkmDesc}</td>
+      <td style="font-size:11px;color:var(--tx2);min-width:46px">${hkmUnit}</td>
       ${periodCells}
     </tr>`;
   }).join('');
@@ -1363,29 +1377,59 @@ function hPL(inp){
       let data={};
       const parseRows=(rows)=>{
         rows.forEach(r=>{
-          const code=(r['Item Code']||r['HKM Code']||r['Item']||r['item']||'').toString().trim().split(' ')[0];
-          const cost=parseFloat(r['Cost']||r['cost']||0)||null;
-          const reg=parseFloat(r['Price']||r['Reg Price']||r['price']||0)||null;
-          if(code&&cost)data[code]={cost,reg:reg||cost};
+          // Broad column detection — handles QB exports, custom CSVs, HKM formats
+          const code=(
+            r['Item Code']||r['HKM Code']||r['HKM']||r['Item']||r['Item Name']||
+            r['item']||r['SKU']||r['Code']||r['code']||''
+          ).toString().trim().split(/\s+/)[0];
+          const cost=parseFloat(
+            r['Cost']||r['cost']||r['Purchase Cost']||r['Unit Cost']||
+            r['Avg Cost']||r['COGS']||0
+          )||null;
+          const reg=parseFloat(
+            r['Price']||r['Reg Price']||r['price']||r['Sales Price']||
+            r['Sale Price']||r['Regular Price']||r['List Price']||0
+          )||null;
+          if(code&&code.length>1&&cost&&cost>0){
+            const desc=(r['Description']||r['description']||'').toString().trim();
+            const unit=(r['U/M']||r['UM']||r['Unit']||r['unit']||r['UOM']||'').toString().trim();
+            data[code]={cost,reg:(reg&&reg>0)?reg:cost,desc,unit};
+          }
         });
       };
-      if(file.name.endsWith('.csv')){
-        Papa.parse(e.target.result,{header:true,skipEmptyLines:true,complete:res=>parseRows(res.data)});
+      // Shared finalize — runs after rows are parsed (handles both CSV async and XLSX sync)
+      const finalize=()=>{
+        const itemCount=Object.keys(data).length;
+        if(itemCount===0){
+          hProg('pl');
+          sal('pa','No items found. Make sure your file has columns: Item Code (or HKM/Item), Cost, and Price.','er',0);
+          inp.value='';return;
+        }
+        const d=new Date();
+        const dt=(d.getMonth()+1).toString().padStart(2,'0')+'/'+d.getDate().toString().padStart(2,'0')+'/'+d.getFullYear().toString().slice(2);
+        DB.periods.unshift({id:'p'+Date.now(),lbl,dt,data,bid_type:lbl});
+        if(DB.periods.length>12)DB.periods=DB.periods.slice(0,12);
+        dbSave();hProg('pl');
+        sal('pa',`✓ "${lbl}" added — ${itemCount} items loaded. Previous periods shifted back. Draft Bid comparison updated.`,'ok');
+        document.getElementById('pll').value='';
+        inp.value='';
+      };
+      if(file.name.toLowerCase().endsWith('.csv')){
+        // CSV: finalize inside complete callback (async-safe)
+        // dynamicTyping=true → numbers come in as numbers not strings
+        // transformHeader → trims whitespace/BOM from header names
+        Papa.parse(e.target.result,{header:true,skipEmptyLines:true,dynamicTyping:true,
+          transformHeader:h=>h.trim().replace(/^\uFEFF/,''),
+          complete:res=>{parseRows(res.data);finalize();}});
       }else{
+        // XLSX: synchronous parse, then finalize
         const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         parseRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null}));
+        finalize();
       }
-      const d=new Date();
-      const dt=(d.getMonth()+1).toString().padStart(2,'0')+'/'+d.getDate().toString().padStart(2,'0')+'/'+d.getFullYear().toString().slice(2);
-      DB.periods.unshift({id:'p'+Date.now(),lbl,dt,data});
-      if(DB.periods.length>8)DB.periods=DB.periods.slice(0,8);
-      dbSave();hProg('pl');
-      sal('pa',`✓ "${lbl}" is now the current period. Previous periods shifted back. Draft Bid comparison updated.`,'ok');
-      document.getElementById('pll').value='';
-    }catch(err){hProg('pl');sal('pa','Error: '+err.message,'er',0);}
-    inp.value='';
+    }catch(err){hProg('pl');sal('pa','Error: '+err.message,'er',0);inp.value='';}
   };
-  file.name.endsWith('.csv')?reader.readAsText(file):reader.readAsArrayBuffer(file);
+  file.name.toLowerCase().endsWith('.csv')?reader.readAsText(file):reader.readAsArrayBuffer(file);
 }
 
 // 3. Casino Sheet — item list sync only, ignore casino's own volume & prev bid
@@ -2297,7 +2341,9 @@ function importPriceListMaster(file){
           const cost=parseFloat(row[p.costCol]);
           const price=parseFloat(row[p.priceCol]);
           if(!isNaN(cost)&&cost>0){
-            pData[item]={cost,reg:(!isNaN(price)&&price>0)?price:null};
+            const desc=String(row[1]||'').trim();
+            const unit=String(row[2]||'').trim();
+            pData[item]={cost,reg:(!isNaN(price)&&price>0)?price:null,desc,unit};
           }
         }
         return{id:'pl'+idx, lbl:p.lbl, dt:p.lbl, data:pData, bid_type:p.bidType};
