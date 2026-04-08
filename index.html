@@ -1112,6 +1112,14 @@ function twkKeepDrop(id,checked){
 }
 function selWk(n){S.selW.clear();WK.slice(-Math.min(n,WK.length)).forEach(w=>S.selW.add(w.id));render();}
 
+function delPeriod(id){
+  if(!DB._isAdmin) return;
+  if(!confirm('Delete this period? This cannot be undone.')) return;
+  DB.periods=(DB.periods||[]).filter(p=>p.id!==id);
+  dbSave();
+  render();
+}
+
 // ── PRICE LIST HISTORY ──
 function rPLHist(){
   // Show warning if no periods loaded
@@ -1158,7 +1166,7 @@ function rPLHist(){
   const pgKey_pl='pl_all';
   const pgd_pl=doPg(allItems,pgKey_pl);
 
-  const colHeaders1=periods.map(p=>`<th colspan="2" style="background:var(--navy3);text-align:center;font-size:10px;padding:4px 6px;border:1px solid rgba(255,255,255,.2);white-space:normal;min-width:100px;max-width:120px;word-break:break-word">${p.bid_type||p.lbl}</th>`).join('');
+  const colHeaders1=periods.map(p=>`<th colspan="2" style="background:var(--navy3);text-align:center;font-size:10px;padding:4px 6px;border:1px solid rgba(255,255,255,.2);white-space:normal;min-width:100px;max-width:120px;word-break:break-word;position:relative">${p.bid_type||p.lbl}${DB._isAdmin?`<span onclick="delPeriod('${p.id}')" title="Delete this period" style="position:absolute;top:2px;right:4px;cursor:pointer;color:rgba(255,100,100,.8);font-size:10px;line-height:1;font-weight:700">✕</span>`:''}` + `</th>`).join('');
   const colHeaders2=periods.map(p=>`<th colspan="2" style="background:var(--navy2);text-align:center;font-size:10px;padding:4px 6px;border:1px solid rgba(255,255,255,.2);white-space:normal;min-width:100px">${p.lbl}</th>`).join('');
   const colHeaders3=periods.map(()=>`<th style="background:var(--navy4);font-size:10px;padding:5px 8px;border:1px solid rgba(255,255,255,.2);width:60px;min-width:60px;text-align:right">Cost</th><th style="background:var(--navy4);font-size:10px;padding:5px 8px;border:1px solid rgba(255,255,255,.2);width:60px;min-width:60px;text-align:right">Price</th>`).join('');
 
