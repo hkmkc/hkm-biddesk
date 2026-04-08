@@ -917,7 +917,8 @@ function rBidSheet(){
 // ── DRAFT BID (all-in-one) ──
 function rDraftBid(){
   const pa=DB.periods[S.cA]||DB.periods[0],pb=DB.periods[S.cB]||DB.periods[1];
-  const its=gI(S.casino.id,S.cat);
+  let its=gI(S.casino.id,S.cat);
+  its=applyFlt(its,'db');
   const _fmtP=(p,i,sel)=>{const n=Object.keys(p.data||{}).length;const lbl=(p.bid_type?p.bid_type+' – ':'')+p.lbl+(n>0?' ('+n+' items)':' (no data)');return`<option value="${i}"${i===sel?' selected':''}>${lbl}</option>`;};
   const po_a=DB.periods.map((p,i)=>_fmtP(p,i,S.cA)).join('');
   const po_b=DB.periods.map((p,i)=>_fmtP(p,i,S.cB)).join('');
