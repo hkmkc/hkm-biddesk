@@ -1453,6 +1453,7 @@ function hPL(inp){
         }
         const d=new Date();
         const dt=(d.getMonth()+1).toString().padStart(2,'0')+'/'+d.getDate().toString().padStart(2,'0')+'/'+d.getFullYear().toString().slice(2);
+        DB.periods=DB.periods.filter(p=>!(p.bid_type===bidType&&p.lbl===lbl));
         DB.periods.unshift({id:'p'+Date.now(),lbl,dt,data,bid_type:bidType});
         if(DB.periods.length>12)DB.periods=DB.periods.slice(0,12);
         // Save locally first
