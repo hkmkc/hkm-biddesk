@@ -1318,10 +1318,10 @@ function rUCasino(){return`
   </div>
   <div style="margin-bottom:10px;display:flex;gap:10px">
     <div style="flex:1"><label class="fl">Casino</label>
-      <select id="ccas">${DB.casinos.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <select id="ccas" onchange="updCCat()">${DB.casinos.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}"${S._ucCas===c.id?' selected':''}>${c.name}</option>`).join('')}</select>
     </div>
     <div style="flex:1"><label class="fl">Category</label>
-      <select id="ccat">${CL.map(c=>`<option value="${c}">${c}</option>`).join('')}</select>
+      <select id="ccat">${(()=>{const cid=S._ucCas||(DB.casinos[0]&&DB.casinos[0].id);const cas=DB.casinos.find(c=>c.id===cid);const cats=[...(cas&&cas.cats||CL)].sort();return cats.map(c=>`<option value="${c}"${S._ucCat===c?' selected':''}>${c}</option>`).join('');})()}</select>
     </div>
   </div>
   <div class="uz">
@@ -1560,9 +1560,22 @@ function parseSheetFile(file, onSuccess, onError){
   else reader.readAsArrayBuffer(file);
 }
 
+function updCCat(){
+  const sel=document.getElementById('ccas');
+  if(!sel)return;
+  const cid=sel.value;
+  S._ucCas=cid;
+  S._ucCat=null;
+  const cas=DB.casinos.find(c=>c.id===cid);
+  const cats=[...(cas&&cas.cats||CL)].sort();
+  const ccat=document.getElementById('ccat');
+  if(ccat) ccat.innerHTML=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
 function hCasino(inp){
   const file=inp.files[0];if(!file)return;
-  const cid=document.getElementById('ccas').value,cat=document.getElementById('ccat').value;
+  S._ucCas=document.getElementById('ccas').value;
+  S._ucCat=document.getElementById('ccat').value;
+  const cid=S._ucCas,cat=S._ucCat;
   sProg('cs');
   parseSheetFile(file,
     function(data){
