@@ -31,22 +31,22 @@ body{overflow:hidden}
 .bcs{color:var(--bd2)}
 #tr{display:flex;gap:8px;margin-left:auto;padding-right:16px}
 #layout{display:flex;height:calc(100vh - 54px);overflow:hidden}
-#sb{width:var(--sbw);background:#0f1f36;flex-shrink:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#sb{width:var(--sbw);background:var(--navy);flex-shrink:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .sb-sec{padding:18px 16px 5px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,.35)}
-.sb-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:.15s;color:rgba(255,255,255,.7);font-size:13px;font-weight:500;border-radius:10px;margin:1px 8px}
-.sb-item:hover{background:rgba(255,255,255,.08);color:#fff}
-.sb-item.on{background:rgba(255,255,255,.14);color:#fff;font-weight:700;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.sb-item{display:flex;align-items:center;gap:9px;padding:9px 14px;cursor:pointer;transition:.12s;color:rgba(255,255,255,.75);font-size:13px;font-weight:500;border-radius:6px;margin:1px 8px}
+.sb-item:hover{background:rgba(255,255,255,.12);color:#fff}
+.sb-item.on{background:var(--gold);color:#1a2a3a;font-weight:700}
 .sb-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;opacity:.8}
 .sb-divider{height:1px;background:rgba(255,255,255,.08);margin:6px 16px}
 .sb-casino-hd{padding:12px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.35);display:flex;align-items:center;gap:6px;cursor:pointer;transition:.15s}
 .sb-casino-hd:hover{color:rgba(255,255,255,.7)}
 .sb-casino-hd .chev{font-size:9px;transition:transform .2s;opacity:.6}
 .sb-casino-hd.open .chev{transform:rotate(90deg)}
-.sb-cat{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 32px;cursor:pointer;transition:.15s;color:rgba(255,255,255,.6);font-size:12px;border-radius:10px;margin:1px 8px}
-.sb-cat:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
-.sb-cat.on{background:rgba(255,255,255,.14);color:#fff;font-weight:700;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.sb-cat{display:flex;align-items:center;justify-content:space-between;padding:7px 14px 7px 30px;cursor:pointer;transition:.12s;color:rgba(255,255,255,.65);font-size:12px;border-radius:5px;margin:1px 8px}
+.sb-cat:hover{background:rgba(255,255,255,.1);color:#fff}
+.sb-cat.on{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
 .sb-cat-n{flex:1}
-.sb-cat-c{font-size:10px;background:rgba(255,255,255,.12);padding:1px 6px;border-radius:20px;color:rgba(255,255,255,.6)}
+.sb-cat-c{font-size:10px;opacity:.5}
 .sb-add{padding:6px 14px 6px 32px;font-size:11px;color:rgba(255,255,255,.28);cursor:pointer;transition:.15s;border-radius:8px;margin:1px 8px}
 .sb-add:hover{color:rgba(255,255,255,.65);background:rgba(255,255,255,.06)}
 #main{flex:1;padding:22px;overflow-y:auto;overflow-x:hidden;background:#fff}
@@ -59,17 +59,17 @@ body{overflow:hidden}
 .btn-sm{padding:3px 9px;font-size:11px}
 .card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--rl2);padding:18px;margin-bottom:14px;box-shadow:var(--sh)}
 .ct{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-/* Capsule pill tabs — all tabs now use this style */
-.tabs{display:flex;gap:5px;background:#eef2f8;padding:5px;border-radius:50px;border:none;width:fit-content;flex-wrap:wrap;margin-bottom:14px}
-.tab{padding:7px 20px;border-radius:50px;cursor:pointer;font-size:12px;font-weight:600;color:#6b7c99;transition:.15s;white-space:nowrap;background:none;border:none;margin:0}
-.tab.on{background:#1B5C9E;color:#fff;font-weight:700;box-shadow:0 2px 8px rgba(27,92,158,.3)}
+/* Rectangle tabs — all tabs */
+.tabs{display:flex;gap:4px;background:#eef2f8;padding:4px;border-radius:8px;border:none;width:fit-content;flex-wrap:wrap;margin-bottom:14px}
+.tab{padding:7px 18px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;color:#6b7c99;transition:.15s;white-space:nowrap;background:none;border:none;margin:0}
+.tab.on{background:#1B5C9E;color:#fff;font-weight:700;box-shadow:0 1px 4px rgba(27,92,158,.25)}
 .tab:hover:not(.on){background:rgba(27,92,158,.08);color:#1B5C9E}
-/* Upload hub pill tabs (same style) */
-.tabs-p{display:flex;gap:5px;background:#eef2f8;padding:5px;border-radius:50px;border:none;width:fit-content;flex-wrap:wrap;margin-bottom:14px}
-.tabs-p .tab{padding:7px 20px;border-radius:50px;font-size:12px;font-weight:600;color:#6b7c99;border:none;margin:0;background:none}
-.tabs-p .tab.on{background:#1B5C9E;color:#fff;box-shadow:0 2px 8px rgba(27,92,158,.3)}
-/* Action buttons — rounded pill like "Site Search | Search API" */
-.btn-act{background:#fff;border:1.5px solid #93c5fd;border-radius:50px;padding:7px 18px;font-size:11px;font-weight:700;color:#1B5C9E;letter-spacing:.4px;cursor:pointer;font-family:inherit;transition:.15s;text-transform:uppercase}
+/* Upload hub tabs (same style) */
+.tabs-p{display:flex;gap:4px;background:#eef2f8;padding:4px;border-radius:8px;border:none;width:fit-content;flex-wrap:wrap;margin-bottom:14px}
+.tabs-p .tab{padding:7px 18px;border-radius:6px;font-size:12px;font-weight:600;color:#6b7c99;border:none;margin:0;background:none}
+.tabs-p .tab.on{background:#1B5C9E;color:#fff;box-shadow:0 1px 4px rgba(27,92,158,.25)}
+/* Action buttons — rectangle style */
+.btn-act{background:#fff;border:1.5px solid #93c5fd;border-radius:6px;padding:7px 16px;font-size:11px;font-weight:700;color:#1B5C9E;letter-spacing:.4px;cursor:pointer;font-family:inherit;transition:.15s;text-transform:uppercase}
 .btn-act:hover{background:#eff6ff;border-color:#1B5C9E}
 .btn-act-gold{border-color:#fbbf24;color:#92400e;background:#fff}
 .btn-act-gold:hover{background:#fffbeb;border-color:#d97706}
@@ -173,11 +173,11 @@ input:focus,select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 
 .pgsz{padding:4px 7px;border-radius:5px;border:1px solid var(--bd2);font-size:11px;background:var(--bg2);color:var(--tx);cursor:pointer}
 /* ── Filter bar ── */
 .fbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;margin-bottom:8px}
-.ftag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--bd2);cursor:pointer;font-size:11px;font-weight:600;background:var(--bg2);color:var(--tx2);transition:.12s;white-space:nowrap}
-.ftag:hover{border-color:var(--navy);color:var(--navy)}
-.ftag.on{background:var(--navy);color:#fff;border-color:var(--navy)}
-.fsearch{padding:5px 10px;border-radius:20px;border:1px solid var(--bd2);font-size:12px;background:var(--bg2);color:var(--tx);font-family:inherit;width:180px}
-.fsearch:focus{outline:none;border-color:var(--navy)}
+.ftag{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;border:1.5px solid var(--bd2);cursor:pointer;font-size:11px;font-weight:600;background:#fff;color:var(--tx2);transition:.12s;white-space:nowrap}
+.ftag:hover{border-color:#1B5C9E;color:#1B5C9E;background:#eff6ff}
+.ftag.on{background:#1B5C9E;color:#fff;border-color:#1B5C9E}
+.fsearch{padding:5px 12px;border-radius:6px;border:1.5px solid var(--bd2);font-size:12px;background:#fff;color:var(--tx);font-family:inherit;width:200px}
+.fsearch:focus{outline:none;border-color:#1B5C9E}
 /* ── Delete row button ── */
 .del-row{opacity:0;padding:2px 6px;border-radius:4px;border:1px solid #f7c1c1;background:var(--rl);color:var(--red);cursor:pointer;font-size:10px;font-weight:700;transition:.12s}
 tr:hover .del-row{opacity:1}
@@ -777,11 +777,11 @@ function rBids(){
        :'Week: '+now_pst.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',month:'2-digit',day:'2-digit'}))
     :'';
   const dlDrop=`<div style="position:relative;display:inline-block">
-    <button onclick="event.stopPropagation();var p=this.nextElementSibling;p.style.display=p.style.display==='block'?'none':'block'" style="display:flex;flex-direction:row;align-items:center;gap:7px;background:#fff;border:1.5px solid #93c5fd;border-radius:50px;padding:7px 18px;cursor:pointer;font-family:inherit;color:#1B5C9E;transition:.15s;white-space:nowrap" onmouseover="this.style.background='#eff6ff';this.style.borderColor='#1B5C9E'" onmouseout="this.style.background='#fff';this.style.borderColor='#93c5fd'">
+    <button onclick="event.stopPropagation();var p=this.nextElementSibling;p.style.display=p.style.display==='block'?'none':'block'" style="display:flex;flex-direction:row;align-items:center;gap:7px;background:#fff;border:1.5px solid #93c5fd;border-radius:6px;padding:7px 16px;cursor:pointer;font-family:inherit;color:#1B5C9E;transition:.15s;white-space:nowrap" onmouseover="this.style.background='#eff6ff';this.style.borderColor='#1B5C9E'" onmouseout="this.style.background='#fff';this.style.borderColor='#93c5fd'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase">Export</span>
     </button>
-    <div style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid #e2eaf4;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:300;min-width:130px;overflow:hidden;padding:6px 0">
+    <div style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e2eaf4;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:300;min-width:130px;overflow:hidden;padding:4px 0">
       <div onclick="downloadTab('csv')" style="padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer;color:#374151;letter-spacing:.3px" onmouseover="this.style.background='#eff6ff';this.style.color='#1B5C9E'" onmouseout="this.style.background='';this.style.color='#374151'">CSV</div>
       <div onclick="downloadTab('xlsx')" style="padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer;color:#374151;letter-spacing:.3px" onmouseover="this.style.background='#eff6ff';this.style.color='#1B5C9E'" onmouseout="this.style.background='';this.style.color='#374151'">XLSX</div>
       <div onclick="downloadTab('pdf')" style="padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer;color:#374151;letter-spacing:.3px" onmouseover="this.style.background='#eff6ff';this.style.color='#1B5C9E'" onmouseout="this.style.background='';this.style.color='#374151'">PDF</div>
