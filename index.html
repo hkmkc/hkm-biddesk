@@ -1426,10 +1426,13 @@ function hQBE(inp){
     complete(res){
       try{
         const today=new Date();
-        const d365=new Date(today);d365.setDate(d365.getDate()-365);
-        const d90=new Date(today);d90.setDate(d90.getDate()-90);
-        const d30=new Date(today);d30.setDate(d30.getDate()-30);
-        const d7=new Date(today);d7.setDate(d7.getDate()-7);
+        // Use local-midnight cutoffs so date comparisons don't have UTC offset issues
+        const localMidnight=(d)=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+        const todayMid=localMidnight(today);
+        const d365=new Date(todayMid);d365.setDate(d365.getDate()-365);
+        const d90=new Date(todayMid);d90.setDate(d90.getDate()-90);
+        const d30=new Date(todayMid);d30.setDate(d30.getDate()-30);
+        const d7=new Date(todayMid);d7.setDate(d7.getDate()-7);
         // Flexible header matching — normalize to lowercase alphanumeric then substring-match
         const hdrs=res.meta.fields||[];
         const fndHdr=(...keys)=>{
@@ -1451,10 +1454,19 @@ function hQBE(inp){
           const rawDate=r[colDate]||r['Date']||r['date']||'';
           let dt;
           if(typeof rawDate==='number'&&rawDate>1000&&rawDate<100000){
-            // Excel serial date (days since 1899-12-30)
-            dt=new Date(Math.round((rawDate-25569)*86400*1000));
+            // Excel serial date → convert then normalize to local midnight
+            const tmp=new Date(Math.round((rawDate-25569)*86400*1000));
+            dt=new Date(tmp.getFullYear(),tmp.getMonth(),tmp.getDate());
           } else {
-            dt=rawDate instanceof Date?rawDate:new Date(String(rawDate).replace(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/,'$3-$1-$2'));
+            // Parse MM/DD/YYYY or MM/DD/YY as local midnight (avoid UTC offset shift)
+            const m=String(rawDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+            if(m){
+              const yr=parseInt(m[3]);
+              dt=new Date(yr<100?(yr<50?2000+yr:1900+yr):yr,parseInt(m[1])-1,parseInt(m[2]));
+            } else {
+              const tmp=rawDate instanceof Date?rawDate:new Date(String(rawDate));
+              dt=isNaN(tmp)?tmp:new Date(tmp.getFullYear(),tmp.getMonth(),tmp.getDate());
+            }
           }
           const price=parseFloat(r[colPrice]||r['Sales Price']||r['Price']||0)||null;
           const amount=parseFloat(r[colAmount]||r['Amount']||0)||0;
