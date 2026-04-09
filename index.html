@@ -557,7 +557,7 @@ const ldH=d=>{
   return`<span class="${d.includes('24')?'lo':'ld'}">${d}</span>`;
 };
 const gI=(cid,cat)=>DB.items[`${cid}|${cat}`]||[];
-const gL=(cid,item)=>DB.lps[`${cid}|${item}`]||{};
+const gL=(cid,item,hkm)=>{if(hkm&&hkm.trim()){const v=DB.lps[`${cid}|${hkm.trim()}`];if(v&&Object.keys(v).length)return v;}return DB.lps[`${cid}|${item}`]||{};};
 const gH=(cid,cat,item)=>DB.bidH[`${cid}|${cat}|${item}`]||new Array(WK.length).fill(null);
 const sH=(cid,cat,item,arr)=>{DB.bidH[`${cid}|${cat}|${item}`]=arr;dbSave();};
 const sal=(id,msg,t='ok',ms=4000)=>{
@@ -1028,7 +1028,7 @@ ${(()=>{
   const pgd_db=doPg(its,pgKey_db);
   const rowsDB=pgd_db.items.map((it,idx,_arr)=>{
   const _drn=((S.pg['db_'+S.casino.id+'_'+S.cat]||0)*(S.pgSz||10))+idx+1;
-  const lps=gL(S.casino.id,it.item),h=gH(S.casino.id,S.cat,it.item);
+  const lps=gL(S.casino.id,it.item,it.hkm),h=gH(S.casino.id,S.cat,it.item);
   const _key=it.hkm&&it.hkm.trim()?it.hkm.trim():it.item;
   const da=pa.data[_key]||pa.data[it.item],db2=pb.data[_key]||pb.data[it.item];
   const ac=da?.cost,ar=da?.reg,bc=db2?.cost,br=db2?.reg;
@@ -2082,7 +2082,7 @@ function runAutoPrice() {
   let applied=0, holds=0, increases=0, decreases=0, costDeltaHits=0, marginFloorHits=0;
 
   its.forEach(it => {
-    const lps = gL(S.casino.id, it.item);
+    const lps = gL(S.casino.id, it.item, it.hkm);
     // Look up cost by HKM code (period data keyed by HKM), fall back to item code
     const _key = it.hkm && it.hkm.trim() ? it.hkm.trim() : it.item;
     const acCost = (pa.data[_key]?.cost) || (pa.data[it.item]?.cost) || null;
