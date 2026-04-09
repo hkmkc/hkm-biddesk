@@ -442,10 +442,16 @@ async function sbLoad(forceRender=false){
       const _localBidStatus=DB.bidStatus?{...DB.bidStatus}:{};
       const _localUsers=DB._users&&DB._users.length>0?[...DB._users]:[];
       const _localPeriods=DB.periods?[...DB.periods]:[];
+      const _localNewB=DB.newB&&Object.keys(DB.newB).length>0?{...DB.newB}:{};
+      const _localAlertsSent=DB.alertsSent?{...DB.alertsSent}:{};
       Object.assign(DB, data.data);
       DB._isAdmin=_isAdmin;DB._currentUser=_currentUser;DB._openC=_openC;
       // Merge bidStatus: local entries always win
       DB.bidStatus=Object.assign({},DB.bidStatus||{},_localBidStatus);
+      // Preserve local draft bid prices — never overwrite with Supabase (local is always current)
+      if(Object.keys(_localNewB).length>0) DB.newB=Object.assign({},DB.newB||{},_localNewB);
+      // Preserve alertsSent — local wins so alerts don't re-fire after sync
+      DB.alertsSent=Object.assign({},DB.alertsSent||{},_localAlertsSent);
       // Merge _users: keep all unique emails from both local and Supabase, local approval state wins
       if(_localUsers.length){
         const sbEmails=new Map((DB._users||[]).map(u=>[u.email.toLowerCase(),u]));
@@ -983,7 +989,8 @@ ${(!DB.periods||!DB.periods.some(p=>Object.keys(p.data||{}).length>0))?`<div cla
     <input type="date" id="eff-from" value="${S._effFrom||''}" onchange="S._effFrom=this.value" style="padding:4px 8px;border-radius:6px;border:1.5px solid var(--navy);font-size:11px;font-family:inherit;color:var(--navy);background:var(--bg)">
     <span style="color:var(--tx2);font-weight:700">–</span>
     <input type="date" id="eff-to" value="${S._effTo||''}" onchange="S._effTo=this.value" style="padding:4px 8px;border-radius:6px;border:1.5px solid var(--navy);font-size:11px;font-family:inherit;color:var(--navy);background:var(--bg)">
-    <button class="btn btn-gd btn-sm" style="font-weight:800;letter-spacing:.5px;padding:6px 16px" onclick="saveBid()">SAVE BID</button>
+    <button class="btn btn-sm" style="font-weight:700;padding:6px 14px;border:1.5px solid var(--navy);color:var(--navy)" onclick="saveDraft()">SAVE DRAFT</button>
+    <button class="btn btn-gd btn-sm" style="font-weight:800;letter-spacing:.5px;padding:6px 16px" onclick="saveBid()">SUBMIT BID</button>
   </div>
 </div>
 <div id="draft-al" class="al" style="margin-bottom:10px"></div>
@@ -1414,7 +1421,8 @@ function hQBE(inp){
   const cid=document.getElementById('qcas').value;
   sProg('qbe');
   Papa.parse(file,{
-    header:true,skipEmptyLines:true,
+    header:true,skipEmptyLines:true,dynamicTyping:true,
+    transformHeader:h=>h.trim().replace(/^\uFEFF/,'').replace(/\r/g,''),
     complete(res){
       try{
         const today=new Date();
@@ -1422,14 +1430,36 @@ function hQBE(inp){
         const d90=new Date(today);d90.setDate(d90.getDate()-90);
         const d30=new Date(today);d30.setDate(d30.getDate()-30);
         const d7=new Date(today);d7.setDate(d7.getDate()-7);
+        // Flexible header matching — normalize to lowercase alphanumeric then substring-match
+        const hdrs=res.meta.fields||[];
+        const fndHdr=(...keys)=>{
+          for(const k of keys){
+            const kn=k.toLowerCase().replace(/[^a-z0-9]/g,'');
+            const h=hdrs.find(h=>h.toLowerCase().replace(/[^a-z0-9]/g,'').includes(kn));
+            if(h)return h;
+          }
+          return null;
+        };
+        const colDate=fndHdr('date','transdate','orderdate','invoicedate')||'Date';
+        const colNum=fndHdr('num','number','invoice','orderno','ponumber')||'Num';
+        const colItem=fndHdr('item','itemcode','itemno','sku','part','product')||'Item';
+        const colPrice=fndHdr('salesprice','unitprice','price')||'Sales Price';
+        const colAmount=fndHdr('amount','total','lineamount','extamount')||'Amount';
         const parsed=res.data.map(r=>{
-          const item=(r['Item']||r['item']||'').trim();
-          const code=item.split(' ')[0];
-          const dt=new Date(r['Date']||r['date']||'');
-          return{code,dt,valid:!isNaN(dt)&&code,
-            num:parseFloat(r['Num']||0)||0,
-            price:parseFloat(r['Sales Price']||r['Price']||0)||null,
-            amount:parseFloat(r['Amount']||0)||0};
+          const rawItem=String(r[colItem]||r['Item']||r['item']||r['ITEM']||'').trim();
+          const code=rawItem.split(/[\s,]+/)[0].trim();
+          const rawDate=r[colDate]||r['Date']||r['date']||'';
+          let dt;
+          if(typeof rawDate==='number'&&rawDate>1000&&rawDate<100000){
+            // Excel serial date (days since 1899-12-30)
+            dt=new Date(Math.round((rawDate-25569)*86400*1000));
+          } else {
+            dt=rawDate instanceof Date?rawDate:new Date(String(rawDate).replace(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/,'$3-$1-$2'));
+          }
+          const price=parseFloat(r[colPrice]||r['Sales Price']||r['Price']||0)||null;
+          const amount=parseFloat(r[colAmount]||r['Amount']||0)||0;
+          return{code,dt,valid:!isNaN(dt.getTime())&&code&&code.length>2,
+            num:parseFloat(r[colNum]||r['Num']||0)||0,price,amount};
         }).filter(r=>r.valid);
         const grp={};
         parsed.forEach(r=>{if(!grp[r.code])grp[r.code]=[];grp[r.code].push(r);});
@@ -1448,7 +1478,12 @@ function hQBE(inp){
           };n++;
         });
         dbSave();hProg('qbe');
-        sal('qa',`✓ ${n} items updated — LP Date, LP Price, 365/90/30/7D volumes, and 365D revenue now reflect your QBE data.`,'ok');
+        if(n===0){
+          sal('qa',`⚠ No items matched. Detected headers: ${hdrs.slice(0,8).join(', ')}. Expected columns: Date, Item (or Item Code), Sales Price, Amount.`,'wn',0);
+        } else {
+          sal('qa',`✓ ${n} items updated — LP Date, LP Price, 365/90/30/7D volumes, and 365D revenue now reflect your QBE data.`,'ok');
+          render();
+        }
       }catch(e){hProg('qbe');sal('qa','Error: '+e.message,'er',0);}
       inp.value='';
     },
@@ -1699,6 +1734,14 @@ function saveBid(){
   dbSave();
   sal('bal',`✓ ${n} bid prices saved — effective ${lbl}`,'ok');
   render();
+}
+
+function saveDraft(){
+  const its=gI(S.casino.id,S.cat);
+  const n=its.filter(it=>DB.newB[`${S.casino.id}|${S.cat}|${it.item}`]).length;
+  if(n===0){sal('bal','No draft prices to save. Run Automate Bid or enter prices in the New Bid ★ column first.','wn',0);return;}
+  dbSave();
+  sal('bal',`✓ ${n} draft prices saved. They will remain here after refresh until you Submit.`,'ok',6000);
 }
 
 // ── BOOT ──
@@ -2745,7 +2788,7 @@ function buildNotifItems(){
   }).join('');
 }
 function clearAllNotifs(){
-  if(DB._notifs)DB._notifs.forEach(n=>n.read=true);
+  DB._notifs=[];
   dbSave();rTR();
 }
 function addNotif(msg,urgency='green'){
@@ -2904,7 +2947,7 @@ function rDash(){
   return`
 <div style="margin-bottom:18px">
   <div style="font-size:20px;font-weight:800;color:var(--navy);margin-bottom:2px">Dashboard</div>
-  <div style="font-size:12px;color:var(--tx2)">Las Vegas / PST &nbsp;·&nbsp; ${now.toLocaleString('en-US',{timeZone:'America/Los_Angeles',weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+  <div style="font-size:12px;color:var(--tx2)">Las Vegas / PST &nbsp;·&nbsp; ${now.toLocaleString('en-US',{timeZone:'America/Los_Angeles',weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}${DB._currentUser?` &nbsp;·&nbsp; <span style="color:var(--tx3)">${DB._isAdmin?'👤 Admin':'👤 '+DB._currentUser.name}</span>`:''}</div>
 </div>
 
 <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px">🔍 Bid Overview Search</div>
