@@ -3470,12 +3470,7 @@ function hideLogin(){
 function showSignup(){
   document.getElementById('signup-area').style.display='block';
 }
-function doLogin(){
-  const email=(document.getElementById('login-email').value||'').trim().toLowerCase();
-  const pw=document.getElementById('login-pw').value||'';
-  if(!email||!pw){document.getElementById('login-al').textContent='Enter email and password.';return;}
-  // Check stored users
-  const users=getUsers();
+function _doLoginWithUsers(email, pw, users){
   const user=users.find(u=>u.email.toLowerCase()===email);
   // Admin override: always allow with correct hashed pw
   if(email===ADMIN_EMAIL.toLowerCase()){
@@ -3496,6 +3491,18 @@ function doLogin(){
   if(user.pw!==btoa(pw)){document.getElementById('login-al').textContent='Incorrect password.';return;}
   localStorage.setItem('hkm_auth',JSON.stringify({email,pw:btoa(pw),name:user.name||email}));
   hideLogin();
+}
+async function doLogin(){
+  const email=(document.getElementById('login-email').value||'').trim().toLowerCase();
+  const pw=document.getElementById('login-pw').value||'';
+  if(!email||!pw){document.getElementById('login-al').textContent='Enter email and password.';return;}
+  // If Supabase hasn't loaded yet, fetch now so we have the latest user list
+  if(SB&&!_sbReady){
+    document.getElementById('login-al').textContent='Connecting… please wait.';
+    await sbLoad(false);
+  }
+  document.getElementById('login-al').textContent='';
+  _doLoginWithUsers(email, pw, getUsers());
 }
 function doSignup(){
   const name=(document.getElementById('signup-name').value||'').trim();
